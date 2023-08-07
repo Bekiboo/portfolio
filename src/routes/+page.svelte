@@ -1,45 +1,85 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Platform } from './Platform';
+	import { Platform } from './platformer-logic/Platform';
+	import { Player } from './platformer-logic/Player';
 
 	let content: HTMLDivElement;
 
+	let canvas: HTMLCanvasElement;
+	let ctx: CanvasRenderingContext2D;
+
+	const player = new Player({ x: 0, y: 0 });
+
+	const keys = {
+		left: false,
+		right: false,
+		up: false,
+		down: false
+	};
+
+	const onKeyDown = (e: KeyboardEvent) => {
+		switch (e.code) {
+			case 'KeyA':
+				keys.left = true;
+				break;
+			case 'KeyD':
+				keys.right = true;
+				break;
+			case 'KeyW':
+				player.velocity.y = -15;
+				break;
+			case 'KeyS':
+				keys.down = true;
+				break;
+		}
+	};
+
+	const onKeyUp = (e: KeyboardEvent) => {
+		switch (e.code) {
+			case 'KeyA':
+				keys.left = false;
+				break;
+			case 'KeyD':
+				keys.right = false;
+				break;
+			case 'KeyW':
+				keys.up = false;
+				break;
+			case 'KeyS':
+				keys.down = false;
+				break;
+		}
+	};
+
+	const animate = () => {
+		canvas.width = content.clientWidth;
+		canvas.height = content.clientHeight;
+
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		let collidingElements = document.getElementsByClassName('colliding');
+		let platforms: Platform[] = [];
+
+		for (let i = 0; i < collidingElements.length; i++) {
+			let el = collidingElements[i] as HTMLDivElement;
+			let platform = new Platform(el.offsetWidth, el.offsetHeight, el.offsetTop, el.offsetLeft);
+			platforms.push(platform);
+
+			platform.draw(ctx);
+		}
+
+		player.draw(ctx);
+		player.update(canvas, keys, platforms);
+
+		requestAnimationFrame(animate);
+	};
+
 	onMount(() => {
-		const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-		const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-
-		const animate = () => {
-			canvas.width = content.clientWidth;
-			canvas.height = content.clientHeight;
-
-			ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-			let collidingElements = document.getElementsByClassName('colliding');
-			let platforms: Platform[] = [];
-
-			for (let i = 0; i < collidingElements.length; i++) {
-				let element = collidingElements[i];
-				let rect = element.getBoundingClientRect();
-				let platform = new Platform(rect);
-				platforms.push(platform);
-
-				console.log(rect);
-				console.log(platform);
-				console.log('-----------------------');
-
-				// draw platforms
-				platform.draw(ctx);
-			}
-
-			requestAnimationFrame(animate);
-		};
+		canvas = document.querySelector('canvas') as HTMLCanvasElement;
+		ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 
 		animate();
 	});
-
-	const test = () => {
-		console.log('test');
-	};
 </script>
 
 <div class="wrapper">
@@ -100,7 +140,7 @@
 	</div>
 </div>
 
-<svelte:window on:resize={test} />
+<svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
 
 <style>
 	.wrapper {
@@ -128,7 +168,7 @@
 		flex-direction: column;
 		justify-content: center;
 		align-items: center;
-		padding: 0 2rem;
+		padding: 0 10rem;
 		text-align: center;
 		color: #fff;
 	}

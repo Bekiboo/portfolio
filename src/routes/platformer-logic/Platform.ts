@@ -4,11 +4,11 @@ export class Platform {
 	top: number;
 	left: number;
 
-	constructor(el: DOMRect) {
-		this.width = el.width;
-		this.height = el.height;
-		this.top = el.top;
-		this.left = el.left;
+	constructor(width: number, height: number, top: number, left: number) {
+		this.width = width;
+		this.height = height;
+		this.top = top;
+		this.left = left;
 	}
 
 	draw(ctx: CanvasRenderingContext2D) {
