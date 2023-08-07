@@ -1,87 +1,87 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { Platform } from './platformer-logic/Platform';
-	import { Player } from './platformer-logic/Player';
+	import { onMount } from 'svelte'
+	import { Platform } from './platformer-logic/Platform'
+	import { Player } from './platformer-logic/Player'
 
-	let content: HTMLDivElement;
+	let content: HTMLDivElement
 
-	let canvas: HTMLCanvasElement;
-	let ctx: CanvasRenderingContext2D;
+	let canvas: HTMLCanvasElement
+	let ctx: CanvasRenderingContext2D
 
-	let player: Player;
+	let player: Player
 
 	const keys = {
 		left: false,
 		right: false,
 		up: false,
 		down: false
-	};
+	}
 
 	const onKeyDown = (e: KeyboardEvent) => {
 		switch (e.code) {
 			case 'KeyA':
-				keys.left = true;
-				break;
+				keys.left = true
+				break
 			case 'KeyD':
-				keys.right = true;
-				break;
+				keys.right = true
+				break
 			case 'KeyW':
-				player.velocity.y = -15;
-				break;
+				player.velocity.y = -12
+				break
 			case 'KeyS':
-				keys.down = true;
-				break;
+				keys.down = true
+				break
 		}
-	};
+	}
 
 	const onKeyUp = (e: KeyboardEvent) => {
 		switch (e.code) {
 			case 'KeyA':
-				keys.left = false;
-				break;
+				keys.left = false
+				break
 			case 'KeyD':
-				keys.right = false;
-				break;
+				keys.right = false
+				break
 			case 'KeyW':
-				keys.up = false;
-				break;
+				keys.up = false
+				break
 			case 'KeyS':
-				keys.down = false;
-				break;
+				keys.down = false
+				break
 		}
-	};
+	}
 
 	const animate = () => {
-		canvas.width = content.clientWidth;
-		canvas.height = content.clientHeight;
+		canvas.width = content.clientWidth
+		canvas.height = content.clientHeight
 
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-		let collidingElements = document.getElementsByClassName('colliding');
-		let platforms: Platform[] = [];
+		let collidingElements = document.getElementsByClassName('colliding')
+		let platforms: Platform[] = []
 
 		for (let i = 0; i < collidingElements.length; i++) {
-			let el = collidingElements[i] as HTMLDivElement;
-			let platform = new Platform(el.offsetWidth, el.offsetHeight, el.offsetTop, el.offsetLeft);
-			platforms.push(platform);
+			let el = collidingElements[i] as HTMLDivElement
+			let platform = new Platform(el.offsetWidth, el.offsetHeight, el.offsetTop, el.offsetLeft)
+			platforms.push(platform)
 
-			platform.draw(ctx);
+			platform.draw(ctx)
 		}
 
-		player.draw(ctx);
-		player.update(canvas, keys, platforms);
+		player.draw(ctx)
+		player.update(canvas, keys, platforms)
 
-		requestAnimationFrame(animate);
-	};
+		requestAnimationFrame(animate)
+	}
 
 	onMount(() => {
-		player = new Player({ x: 0, y: 0 });
+		player = new Player({ x: 0, y: 0 })
 
-		canvas = document.querySelector('canvas') as HTMLCanvasElement;
-		ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+		canvas = document.querySelector('canvas') as HTMLCanvasElement
+		ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 
-		animate();
-	});
+		animate()
+	})
 </script>
 
 <div class="wrapper">
