@@ -31,3 +31,9 @@ export type Rect = {
 	width: number;
 	height: number;
 };
+
+export function loadImage(src: string) {
+	const image = new Image();
+	image.src = src;
+	return image;
+}

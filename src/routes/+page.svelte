@@ -8,7 +8,7 @@
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 
-	const player = new Player({ x: 0, y: 0 });
+	let player: Player;
 
 	const keys = {
 		left: false,
@@ -75,6 +75,8 @@
 	};
 
 	onMount(() => {
+		player = new Player({ x: 0, y: 0 });
+
 		canvas = document.querySelector('canvas') as HTMLCanvasElement;
 		ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 

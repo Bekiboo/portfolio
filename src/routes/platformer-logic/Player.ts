@@ -1,5 +1,5 @@
 import type { Platform } from './Platform';
-import { collision, collisionDirection, type Rect } from './utils';
+import { collision, collisionDirection, loadImage, type Rect } from './utils';
 
 const GRAVITY = 0.5;
 
@@ -7,8 +7,15 @@ export class Player {
 	pos: { x: number; y: number };
 	velocity: { x: number; y: number };
 	height = 40;
-	width = 40;
+	width = 24;
+	spriteWidth = 48;
+	spriteHeight = 40;
 	speed = 4;
+	image = loadImage('/Biker/Biker_idle.png');
+	maxFrame = 3;
+	frame = 0;
+	ticksPerFrame = 10;
+	ticksCount = 0;
 	constructor(pos: { x: number; y: number }) {
 		this.pos = pos;
 		this.velocity = {
@@ -18,8 +25,18 @@ export class Player {
 	}
 
 	draw(ctx: CanvasRenderingContext2D) {
-		ctx.fillStyle = 'red';
-		ctx.fillRect(this.pos.x, this.pos.y, this.width, this.height);
+		this.#animate();
+		ctx.drawImage(
+			this.image,
+			this.frame * this.spriteWidth,
+			8,
+			this.spriteWidth,
+			this.height,
+			this.pos.x,
+			this.pos.y,
+			this.spriteWidth,
+			this.height
+		);
 	}
 
 	update(canvas: HTMLCanvasElement, keys: { [key: string]: boolean }, platforms: Platform[]) {
@@ -33,6 +50,18 @@ export class Player {
 
 		if (keys['left']) this.velocity.x -= this.speed;
 		if (keys['right']) this.velocity.x += this.speed;
+	}
+
+	#animate() {
+		this.ticksCount++;
+		if (this.ticksCount > this.ticksPerFrame) {
+			this.ticksCount = 0;
+			if (this.frame < this.maxFrame) {
+				this.frame++;
+			} else {
+				this.frame = 0;
+			}
+		}
 	}
 
 	#applyGravity() {
