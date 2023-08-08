@@ -6,16 +6,16 @@ const GRAVITY = 0.5
 export class Player {
 	pos: { x: number; y: number }
 	velocity: { x: number; y: number }
-	height = 40
-	width = 24
-	spriteWidth = 48
-	spriteHeight = 40
+	height = 80
+	width = 48
 	speed = 4
 	image = loadImage('/Biker/Biker_idle.png')
 	maxFrame = 3
 	frame = 0
 	ticksPerFrame = 10
 	ticksCount = 0
+	direction = 'right'
+
 	constructor(pos: { x: number; y: number }) {
 		this.pos = pos
 		this.velocity = {
@@ -28,14 +28,14 @@ export class Player {
 		this.#animate()
 		ctx.drawImage(
 			this.image,
-			this.frame * this.spriteWidth,
+			this.frame * this.width,
 			8,
-			this.spriteWidth,
+			this.width,
 			this.height,
 			this.pos.x,
 			this.pos.y,
-			this.spriteWidth,
-			this.height
+			this.width * 2,
+			this.height * 2
 		)
 	}
 
@@ -49,7 +49,9 @@ export class Player {
 
 		this.velocity.x = 0 // reset velocity
 
-		if (keys['left']) this.velocity.x -= this.speed
+		if (keys['left']) {
+			this.velocity.x -= this.speed
+		}
 		if (keys['right']) this.velocity.x += this.speed
 	}
 
