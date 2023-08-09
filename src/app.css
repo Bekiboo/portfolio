@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* CSS HEX */
+--space-cadet: #24295cff;
+--delft-blue: #38456eff;
+--persian-red: #d23324ff;
+--azure-web: #e1f5f7ff;
+--white: #f9fcfdff;
+
+/* CSS HSL */
+--space-cadet: hsla(235, 44%, 25%, 1);
+--delft-blue: hsla(226, 33%, 33%, 1);
+--persian-red: hsla(5, 71%, 48%, 1);
+--azure-web: hsla(185, 58%, 93%, 1);
+--white: hsla(195, 50%, 98%, 1);
