@@ -76,12 +76,14 @@ export class Player {
 				)
 			) {
 				if (this.velocity.x > 0) {
+					// hit right
 					this.velocity.x = 0
 					this.pos.x = platform.left - this.width - 0.01
 					break
 				}
 
 				if (this.velocity.x < 0) {
+					// hit left
 					this.velocity.x = 0
 					this.pos.x = platform.left + platform.width + 0.01
 					break
@@ -104,13 +106,15 @@ export class Player {
 				)
 			) {
 				if (this.velocity.y > 0) {
-					this.velocity.y = 0
+					// hit bottom
+					this.velocity.y = 0 // stop falling
 					this.pos.y = platform.top - this.height - 0.01
 					break
 				}
 
 				if (this.velocity.y < 0) {
-					this.velocity.y = 0
+					// hit head
+					this.velocity.y *= -0.6 // bounce
 					this.pos.y = platform.top + platform.height + 0.01
 					break
 				}
