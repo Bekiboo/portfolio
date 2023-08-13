@@ -9,7 +9,11 @@ export default {
 			// cyan-50
 			// neutral-50
 		},
-		extend: {}
+		extend: {
+			fontFamily: {
+				bauhaus: ['Bauhaus']
+			}
+		}
 	},
 	plugins: [require('daisyui')],
 	daisyui: {

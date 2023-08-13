@@ -3,15 +3,31 @@
 @tailwind utilities;
 
 /* CSS HEX */
---space-cadet: #24295cff;
+/* --space-cadet: #24295cff;
 --delft-blue: #38456eff;
 --persian-red: #d23324ff;
 --azure-web: #e1f5f7ff;
---white: #f9fcfdff;
+--white: #f9fcfdff; */
 
 /* CSS HSL */
---space-cadet: hsla(235, 44%, 25%, 1);
+/* --space-cadet: hsla(235, 44%, 25%, 1);
 --delft-blue: hsla(226, 33%, 33%, 1);
 --persian-red: hsla(5, 71%, 48%, 1);
 --azure-web: hsla(185, 58%, 93%, 1);
---white: hsla(195, 50%, 98%, 1);
+--white: hsla(195, 50%, 98%, 1); */
+
+@layer base {
+	@font-face {
+		font-family: 'Bauhaus';
+		src: local('Bauhaus'), local('bauhaus'), url('/fonts/bauhaus/Bauhaus-93-Regular.ttf');
+		font-weight: normal;
+		font-display: swap;
+	}
+	,
+	@font-face {
+		font-family: 'Bauhaus';
+		src: local('Bauhaus Bold'), local('Bauhaus-Bold'), url('/fonts/bauhaus/BauhausBold.ttf');
+		font-weight: bold;
+		font-display: swap;
+	}
+}
