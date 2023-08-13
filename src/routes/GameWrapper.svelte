@@ -65,7 +65,7 @@
 			let platform = new Platform(el.offsetWidth, el.offsetHeight, el.offsetTop, el.offsetLeft)
 			platforms.push(platform)
 
-			// platform.draw(ctx)
+			platform.draw(ctx)
 		}
 
 		player.draw(ctx)
@@ -87,7 +87,7 @@
 <div class="wrapper">
 	<canvas />
 
-	<div class="content px-20 md:px-40 pt-10" bind:this={content}>
+	<div class="content" bind:this={content}>
 		<slot />
 	</div>
 </div>

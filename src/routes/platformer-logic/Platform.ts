@@ -11,8 +11,8 @@ export class Platform {
 		this.left = left
 	}
 
-	// draw(ctx: CanvasRenderingContext2D) {
-	// 	ctx.strokeStyle = 'white'
-	// 	ctx.strokeRect(this.left, this.top, this.width, this.height)
-	// }
+	draw(ctx: CanvasRenderingContext2D) {
+		// ctx.strokeStyle = 'white'
+		// ctx.strokeRect(this.left, this.top, this.width, this.height)
+	}
 }
