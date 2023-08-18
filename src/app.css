@@ -2,12 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS HEX */
-/* --space-cadet: #24295cff;
---delft-blue: #38456eff;
---persian-red: #d23324ff;
---azure-web: #e1f5f7ff;
---white: #f9fcfdff; */
+:root {
+	--space-cadet: #24295cff;
+	--delft-blue: #38456eff;
+	--persian-red: #d23324ff;
+	--azure-web: #e1f5f7ff;
+	--white: #f9fcfdff;
+}
+
+[data-theme='light'] {
+	--primary: var(--space-cadet);
+	--secondary: var(--delft-blue);
+	--accent: var(--persian-red);
+	--bg: var(--white);
+	--text: var(--space-cadet);
+	--neutral: var(--azure-web);
+}
+
+[data-theme='dark'] {
+	--primary: var(--white);
+	--secondary: var(--azure-web);
+	--accent: var(--persian-red);
+	--bg: var(--space-cadet);
+	--text: var(--white);
+	--neutral: var(--delft-blue);
+}
 
 /* CSS HSL */
 /* --space-cadet: hsla(235, 44%, 25%, 1);
