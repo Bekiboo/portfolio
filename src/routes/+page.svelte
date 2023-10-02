@@ -14,7 +14,8 @@
 		IconBrandMongodb,
 		IconBrandSupabase,
 		IconBrandFirebase,
-		IconBrandAngular
+		IconBrandAngular,
+		IconTestPipe
 	} from '@tabler/icons-svelte'
 </script>
 
@@ -129,7 +130,9 @@
 		<section class="mb-12">
 			<h2 class="flex mb-2 text-2xl title"><span>Academics</span></h2>
 			<h3 class="text-xl">Bachelor of Science in Applied Technology</h3>
-			<span class="text-slate-400">Brigham Young University Idaho</span>
+			<a target="_blank" href="https://www.byui.edu/" class="text-slate-400 hover:underline"
+				>Brigham Young University Idaho</a
+			>
 
 			<ul class="mt-2">
 				<li>Certificate of Web Front-End – <span class="text-persian-red">2020</span></li>
@@ -147,15 +150,59 @@
 				<span class="whitespace-nowrap">Featured Projects</span>
 			</h2>
 
-			<ul>
-				<li>
-					<a target="_blank" href="https://www.elevatus-foundation.org/">Elevatus Foundation</a>
+			<ul class="flex flex-col gap-8">
+				<li class="grid grid-cols-12 gap-4">
+					<img
+						class="w-full col-span-2"
+						src="image/logo-elevatus.svg"
+						alt="Elevatus Foundation Logo"
+					/>
+					<div class="col-span-10">
+						<a
+							class="text-xl duration-100 hover:text-persian-red"
+							target="_blank"
+							href="https://www.elevatus-foundation.org/">Elevatus Foundation</a
+						>
+						<p>
+							Website for the Elevatus Foundation, a non-profit organization that provides education
+							for trafficked children in Madagascar.
+						</p>
+						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+					</div>
 				</li>
-				<li>
-					<a target="_blank" href="https://mulligan.vercel.app/">Mulligan</a>
+
+				<li class="grid grid-cols-12 gap-4">
+					<img class="w-full col-span-2" src="image/logo-mulligan.svg" alt="Mulligan Logo" />
+					<div class="col-span-10">
+						<a
+							class="text-xl duration-100 hover:text-persian-red"
+							target="_blank"
+							href="https://mulligan.vercel.app/">Mulligan</a
+						>
+						<p>
+							A prototype Virtual Table Top app. In its current state it allows players to share a
+							board and move tokens around in realtime.
+						</p>
+						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+					</div>
 				</li>
-				<li>
-					<a target="_blank" href="https://bekiboo-sandbox.vercel.app/">Sandbox</a>
+
+				<li class="grid grid-cols-12 gap-4">
+					<div class="w-full col-span-2 text-blue-500">
+						<IconTestPipe size={64} stroke={2} color={'currentColor'} />
+					</div>
+					<div class="col-span-10">
+						<a
+							class="text-xl duration-100 hover:text-persian-red"
+							target="_blank"
+							href="https://bekiboo-sandbox.vercel.app/">Sandbox</a
+						>
+						<p>
+							A collection of small projects and experiments. This website is always evolving and
+							might be prone to bugs.
+						</p>
+						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+					</div>
 				</li>
 			</ul>
 		</section>

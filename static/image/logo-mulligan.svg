@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="10mm"
+   height="9.4820004mm"
+   viewBox="0 0 10 9.4820004"
+   version="1.1"
+   id="svg843"
+   inkscape:version="1.0.1 (3bc2e813f5, 2020-09-07)"
+   sodipodi:docname="M-ulligan.svg">
+  <defs
+     id="defs837" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="16"
+     inkscape:cx="8.3524125"
+     inkscape:cy="22.071275"
+     inkscape:document-units="mm"
+     inkscape:current-layer="text851"
+     inkscape:document-rotation="0"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1057"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata840">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <g
+       aria-label="M"
+       id="text851"
+       style="font-style:normal;font-weight:normal;font-size:11.971px;line-height:1.25;font-family:sans-serif;fill:none;fill-opacity:1;stroke:#000000;stroke-width:0.299276;stroke-opacity:1">
+      <circle
+         id="path1482"
+         style="fill:#87deaa;stroke:#000000;stroke-width:0.0791834"
+         cx="81.300049"
+         cy="116.34576"
+         r="0.00066229072" />
+      <circle
+         id="path1484"
+         style="fill:#87deaa;stroke:#000000;stroke-width:0.0791834"
+         cx="0.56246585"
+         cy="0.040253989"
+         r="0.00066229072" />
+      <path
+         id="path1464-9"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:11.971px;line-height:1.25;font-family:'Showcard Gothic';-inkscape-font-specification:'Showcard Gothic';fill:#31c292;fill-opacity:1;stroke:#000000;stroke-width:0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="M 9.9999995,5.3673071e-4 C 9.8513182,1.8007452 9.7487815,3.3316604 9.6925263,4.5934161 9.6121663,6.7834016 9.557596,8.3385805 9.5294673,9.2587775 H 7.3595838 L 7.2993727,6.4435751 5.003197,9.4815131 5.0000044,9.4763605 V 3.0684921 c 8.189e-4,0.00103 0.00247,0.00412 0.00319,0.00515 C 5.3929763,2.4387589 5.7000544,1.8883855 5.9250793,1.4222598 6.2184167,0.76727294 6.425334,0.29334118 6.5458824,5.1548587e-7 Z" />
+      <circle
+         id="path1482-7"
+         style="font-style:normal;font-weight:normal;font-size:11.971px;line-height:1.25;font-family:sans-serif;fill:#87deaa;fill-opacity:1;stroke:#000000;stroke-width:0.0791834;stroke-opacity:1"
+         cx="-9.5093956"
+         cy="1.2760786"
+         r="0.00066229078"
+         transform="scale(-1,1)" />
+      <circle
+         id="path1484-8"
+         style="font-style:normal;font-weight:normal;font-size:11.971px;line-height:1.25;font-family:sans-serif;fill:#87deaa;fill-opacity:1;stroke:#000000;stroke-width:0.0791834;stroke-opacity:1"
+         cx="-9.0583763"
+         cy="10.279734"
+         r="0.00066229078"
+         transform="scale(-1,1)" />
+      <path
+         id="path1464-7-3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:11.971px;line-height:1.25;font-family:'Showcard Gothic';-inkscape-font-specification:'Showcard Gothic';fill:#76d6b4;fill-opacity:1;stroke:#000000;stroke-width:0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+         d="M 5.5975013e-7,8.976448e-4 C 0.1486817,1.8011063 0.25121842,3.3320213 0.30747358,4.5937771 0.38783369,6.7837626 0.4424039,8.3389311 0.4705325,9.2591281 h 2.1698837 l 0.06021,-2.815192 2.296176,3.0379379 0.00319,-0.00515 V 3.068853 c -8.187e-4,0.00103 -0.00247,0.00412 -0.00319,0.00515 C 4.6070236,2.4391095 4.2999455,1.8887465 4.0749208,1.4226104 3.7815831,0.76762354 3.574666,0.29370209 3.4541176,3.6142958e-4 Z" />
+    </g>
+  </g>
+</svg>
