@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { tooltip } from '$lib/tooltip/tooltip'
-	import Button from './components/Button.svelte'
 	import {
 		IconBrandSvelte,
 		IconBrandJavascript,
@@ -10,13 +9,21 @@
 		IconBrandSass,
 		IconBrandTailwind,
 		IconBrandGit,
+		IconBrandGithub,
 		IconBrandPython,
 		IconBrandMongodb,
 		IconBrandSupabase,
 		IconBrandFirebase,
 		IconBrandAngular,
-		IconTestPipe
+		IconBrandLinkedin,
+		IconMail
 	} from '@tabler/icons-svelte'
+
+	const copyEmail = () => {
+		const email = 'julien.connault@gmail.com'
+		navigator.clipboard.writeText(email)
+		alert(`Copied ${email} to clipboard`)
+	}
 </script>
 
 <div class="relative grid max-w-screen-xl min-h-screen px-8 pt-10 mx-auto lg:grid-cols-2 md:px-24">
@@ -36,10 +43,65 @@
 			with interactive design.
 		</p>
 
-		<Button>Contact Me</Button>
+		<button
+			class="relative w-48 h-12 px-4 py-2 font-medium uppercase colliding"
+			on:click={copyEmail}>Copy Email</button
+		>
+
+		<ul class="flex items-center mt-8 ml-1" aria-label="Social media">
+			<li class="mr-5">
+				<a
+					class="block hover:text-persian-red"
+					href="https://github.com/Bekiboo"
+					target="_blank"
+					rel="noreferrer"
+					><span class="sr-only">GitHub</span>
+					<IconBrandGithub size={36} stroke={1} color={'currentColor'} />
+				</a>
+			</li>
+			<li class="mr-5">
+				<a
+					class="block hover:text-persian-red"
+					href="https://www.linkedin.com/in/bchiang7/"
+					target="_blank"
+					rel="noreferrer"
+					><span class="sr-only">LinkedIn</span>
+					<IconBrandLinkedin size={36} stroke={1} color={'currentColor'} />
+				</a>
+			</li>
+			<li class="mr-5">
+				<a
+					class="block hover:text-persian-red"
+					href="mailto:julien.connault@gmail.com"
+					target="_blank"
+					rel="noreferrer"
+					><span class="sr-only">LinkedIn</span>
+					<IconMail size={36} stroke={1} color={'currentColor'} />
+				</a>
+			</li>
+		</ul>
+		<span class="mt-2 font-thin">Email: julien.connault@gmail.com</span>
 	</header>
 
 	<main class="lg:col-start-2">
+		<!---------- ACADEMICS ---------->
+		<section class="mb-12">
+			<h2 class="flex mb-2 text-2xl title"><span>Academics</span></h2>
+			<h3 class="text-xl">Bachelor of Science in Applied Technology</h3>
+			<a target="_blank" href="https://www.byui.edu/" class="text-slate-400 hover:underline"
+				>Brigham Young University Idaho</a
+			>
+
+			<ul class="mt-2">
+				<li>Certificate of Web Front-End – <span class="text-persian-red">2020</span></li>
+				<li>Certificate of Web Development – <span class="text-persian-red">2021</span></li>
+				<li>Certificate of Computer Programming – <span class="text-persian-red">2022</span></li>
+				<li>
+					Certificate of Business Analysis – <span class="text-persian-red">In Progress</span>
+				</li>
+			</ul>
+		</section>
+
 		<!---------- TECHNOLOGIES ---------->
 		<section class="mb-12">
 			<h2 class="flex mb-2 text-2xl title"><span>Technologies</span></h2>
@@ -126,24 +188,6 @@
 			</div>
 		</section>
 
-		<!---------- ACADEMICS ---------->
-		<section class="mb-12">
-			<h2 class="flex mb-2 text-2xl title"><span>Academics</span></h2>
-			<h3 class="text-xl">Bachelor of Science in Applied Technology</h3>
-			<a target="_blank" href="https://www.byui.edu/" class="text-slate-400 hover:underline"
-				>Brigham Young University Idaho</a
-			>
-
-			<ul class="mt-2">
-				<li>Certificate of Web Front-End – <span class="text-persian-red">2020</span></li>
-				<li>Certificate of Web Development – <span class="text-persian-red">2021</span></li>
-				<li>Certificate of Computer Programming – <span class="text-persian-red">2022</span></li>
-				<li>
-					Certificate of Business Analysis – <span class="text-persian-red">In Progress</span>
-				</li>
-			</ul>
-		</section>
-
 		<!---------- PROJECTS ---------->
 		<section class="mb-12">
 			<h2 class="flex mb-2 text-2xl title">
@@ -163,11 +207,15 @@
 							target="_blank"
 							href="https://www.elevatus-foundation.org/">Elevatus Foundation</a
 						>
-						<p>
+						<p class="text-slate-400">
 							Website for the Elevatus Foundation, a non-profit organization that provides education
 							for trafficked children in Madagascar.
 						</p>
-						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+						<div class="flex gap-2 mt-2">
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Supabase</span>
+						</div>
 					</div>
 				</li>
 
@@ -183,14 +231,16 @@
 							A prototype Virtual Table Top app. In its current state it allows players to share a
 							board and move tokens around in realtime.
 						</p>
-						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+						<div class="flex gap-2 mt-2">
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Supabase</span>
+						</div>
 					</div>
 				</li>
 
 				<li class="grid grid-cols-12 gap-4">
-					<div class="w-full col-span-2 text-blue-500">
-						<IconTestPipe size={64} stroke={2} color={'currentColor'} />
-					</div>
+					<img class="w-full col-span-2" src="image/logo-sandbox.svg" alt="Sandbox Logo" />
 					<div class="col-span-10">
 						<a
 							class="text-xl duration-100 hover:text-persian-red"
@@ -201,7 +251,13 @@
 							A collection of small projects and experiments. This website is always evolving and
 							might be prone to bugs.
 						</p>
-						<span class="text-slate-400">Built with:</span> Svelte, Tailwind, Supabase
+						<div class="flex flex-wrap gap-2 mt-2">
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Daisy UI</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Threlte</span>
+							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Konva</span>
+						</div>
 					</div>
 				</li>
 			</ul>
@@ -224,5 +280,17 @@
 		width: 100%;
 		height: 0.1rem;
 		background: var(--delft-blue);
+	}
+
+	button {
+		box-shadow: 0.3em 0.3em 0 0 #880505, inset 6em 3.5em 0 0 var(--persian-red);
+
+		transition: box-shadow 0.2s ease-in-out;
+	}
+
+	button:hover,
+	button:focus {
+		outline: none;
+		box-shadow: 0.3em 0.3em 0 0 var(--persian-red), inset 0.3em 0.3em 0 0 var(--persian-red);
 	}
 </style>
