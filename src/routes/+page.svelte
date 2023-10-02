@@ -22,7 +22,7 @@
 	class="relative grid min-h-screen px-8 pt-10 text-slate-200 bg-slate-800 lg:grid-cols-2 md:px-24"
 >
 	<header
-		class="grid gap-10 lg:col-start-1 lg:fixed lg:top-0 lg:flex lg:max-h-screen lg:flex-col lg:justify-between lg:py-24"
+		class="grid gap-10 mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:flex lg:max-h-screen lg:flex-col lg:justify-between lg:py-24"
 	>
 		<a href="/">
 			<h1 class="text-4xl font-bold tracking-wider font-bauhaus text-slate-200 sm:text-5xl">
@@ -41,11 +41,12 @@
 	</header>
 
 	<main class="lg:col-start-2">
-		<section class="mb-16">
-			<h2 class="flex text-2xl title"><span>Technologies</span></h2>
+		<!---------- TECHNOLOGIES ---------->
+		<section class="mb-12">
+			<h2 class="flex mb-2 text-2xl title"><span>Technologies</span></h2>
 
-			<div>
-				<h3>Proficient</h3>
+			<div class="mb-2">
+				<h3 class="text-slate-200">Proficient</h3>
 				<ul class="flex">
 					<li data-tooltip="Svelte/Sveltekit" class="hover:text-persian-red" use:tooltip>
 						<div class="pointer-events-none">
@@ -79,8 +80,8 @@
 					</li>
 				</ul>
 			</div>
-			<div>
-				<h3>Experienced</h3>
+			<div class="mb-2 text-slate-400">
+				<h3 class="text-slate-200">Experienced</h3>
 				<ul class="flex">
 					<li data-tooltip="Git" class="hover:text-persian-red" use:tooltip>
 						<div class="pointer-events-none">
@@ -99,8 +100,8 @@
 					</li>
 				</ul>
 			</div>
-			<div>
-				<h3>Familiar</h3>
+			<div class="mb-2 text-slate-600">
+				<h3 class="text-slate-200">Familiar</h3>
 				<ul class="flex">
 					<li data-tooltip="Python" class="hover:text-persian-red" use:tooltip>
 						<div class="pointer-events-none">
@@ -125,25 +126,40 @@
 				</ul>
 			</div>
 		</section>
-		<section class="mb-16">
-			<h2 class="flex text-2xl title"><span>Academics</span></h2>
-			<p>
-				Lorem ipsum dolor sit amet consectetur adipisicing elit. Rerum error aliquid et similique
-				soluta, deleniti sapiente? Aperiam consequatur nostrum enim inventore maxime alias similique
-				autem laudantium, aliquam soluta sed excepturi ullam deserunt dolorem molestiae pariatur
-				illum dolor placeat, blanditiis, ut architecto. Dolor earum deserunt optio unde eligendi,
-				tenetur facilis perferendis?
-			</p>
+
+		<!---------- ACADEMICS ---------->
+		<section class="mb-12">
+			<h2 class="flex mb-2 text-2xl title"><span>Academics</span></h2>
+			<h3 class="text-xl">Bachelor of Science in Applied Technology</h3>
+			<span class="text-slate-400">Brigham Young University Idaho</span>
+
+			<ul class="mt-2">
+				<li>Certificate of Web Front-End – <span class="text-persian-red">2020</span></li>
+				<li>Certificate of Web Development – <span class="text-persian-red">2021</span></li>
+				<li>Certificate of Computer Programming – <span class="text-persian-red">2022</span></li>
+				<li>
+					Certificate of Business Analysis – <span class="text-persian-red">In Progress</span>
+				</li>
+			</ul>
 		</section>
-		<section class="mb-16">
-			<h2 class="flex text-2xl title"><span>Featured Projects</span></h2>
-			<p>
-				Lorem ipsum dolor sit amet consectetur adipisicing elit. Rerum error aliquid et similique
-				soluta, deleniti sapiente? Aperiam consequatur nostrum enim inventore maxime alias similique
-				autem laudantium, aliquam soluta sed excepturi ullam deserunt dolorem molestiae pariatur
-				illum dolor placeat, blanditiis, ut architecto. Dolor earum deserunt optio unde eligendi,
-				tenetur facilis perferendis?
-			</p>
+
+		<!---------- PROJECTS ---------->
+		<section class="mb-12">
+			<h2 class="flex mb-2 text-2xl title">
+				<span class="whitespace-nowrap">Featured Projects</span>
+			</h2>
+
+			<ul>
+				<li>
+					<a target="_blank" href="https://www.elevatus-foundation.org/">Elevatus Foundation</a>
+				</li>
+				<li>
+					<a target="_blank" href="https://mulligan.vercel.app/">Mulligan</a>
+				</li>
+				<li>
+					<a target="_blank" href="https://bekiboo-sandbox.vercel.app/">Sandbox</a>
+				</li>
+			</ul>
 		</section>
 	</main>
 </div>
