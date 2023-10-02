@@ -1,28 +1,167 @@
 <script lang="ts">
+	import { tooltip } from '$lib/tooltip/tooltip'
 	import Button from './components/Button.svelte'
+	import {
+		IconBrandSvelte,
+		IconBrandJavascript,
+		IconBrandTypescript,
+		IconBrandHtml5,
+		IconBrandCss3,
+		IconBrandSass,
+		IconBrandTailwind,
+		IconBrandGit,
+		IconBrandPython,
+		IconBrandMongodb,
+		IconBrandSupabase,
+		IconBrandFirebase,
+		IconBrandAngular
+	} from '@tabler/icons-svelte'
 </script>
 
-<div class="flex px-8 md:px-40 pt-10">
+<div
+	class="relative grid min-h-screen px-8 pt-10 text-slate-200 bg-slate-800 lg:grid-cols-2 md:px-24"
+>
 	<header
-		class="lg:top-0 lg:flex gap-10 lg:max-h-screen lg:w-1/2 lg:flex-col lg:justify-between lg:py-24"
+		class="grid gap-10 lg:col-start-1 lg:fixed lg:top-0 lg:flex lg:max-h-screen lg:flex-col lg:justify-between lg:py-24"
 	>
 		<a href="/">
-			<h1 class="font-bauhaus text-4xl tracking-wider font-bold text-slate-200 sm:text-5xl">
+			<h1 class="text-4xl font-bold tracking-wider font-bauhaus text-slate-200 sm:text-5xl">
 				Julien Connault
 			</h1>
 		</a>
-		<h2 class="colliding mt-3 text-lg font-medium tracking-tight text-slate-200 sm:text-xl">
+		<h2 class="mt-3 text-lg font-medium tracking-tight colliding text-slate-200 sm:text-xl">
 			Junior Front-End Engineer
 		</h2>
-		<p class="mt-4 max-w-xs leading-normal">
+		<p class="max-w-xs mt-4 leading-normal">
 			I'm a design-minded, detail oriented Front-End Engineer passionate about combining clean code
 			with interactive design.
 		</p>
 
 		<Button>Contact Me</Button>
-		<Button>Ladou</Button>
-		<Button>Contact Me</Button>
-		<Button>Contact Me</Button>
 	</header>
-	<main />
+
+	<main class="lg:col-start-2">
+		<section class="mb-16">
+			<h2 class="flex text-2xl title"><span>Technologies</span></h2>
+
+			<div>
+				<h3>Proficient</h3>
+				<ul class="flex">
+					<li data-tooltip="Svelte/Sveltekit" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandSvelte size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Typescript" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandTypescript size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Javascript" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandJavascript size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="HTML5" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandHtml5 size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="CSS3" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandCss3 size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Tailwind" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandTailwind size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+				</ul>
+			</div>
+			<div>
+				<h3>Experienced</h3>
+				<ul class="flex">
+					<li data-tooltip="Git" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandGit size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Supabase" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandSupabase size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="SASS" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandSass size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+				</ul>
+			</div>
+			<div>
+				<h3>Familiar</h3>
+				<ul class="flex">
+					<li data-tooltip="Python" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandPython size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="MongoDB" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandMongodb size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Firebase" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandFirebase size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+					<li data-tooltip="Angular" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandAngular size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
+				</ul>
+			</div>
+		</section>
+		<section class="mb-16">
+			<h2 class="flex text-2xl title"><span>Academics</span></h2>
+			<p>
+				Lorem ipsum dolor sit amet consectetur adipisicing elit. Rerum error aliquid et similique
+				soluta, deleniti sapiente? Aperiam consequatur nostrum enim inventore maxime alias similique
+				autem laudantium, aliquam soluta sed excepturi ullam deserunt dolorem molestiae pariatur
+				illum dolor placeat, blanditiis, ut architecto. Dolor earum deserunt optio unde eligendi,
+				tenetur facilis perferendis?
+			</p>
+		</section>
+		<section class="mb-16">
+			<h2 class="flex text-2xl title"><span>Featured Projects</span></h2>
+			<p>
+				Lorem ipsum dolor sit amet consectetur adipisicing elit. Rerum error aliquid et similique
+				soluta, deleniti sapiente? Aperiam consequatur nostrum enim inventore maxime alias similique
+				autem laudantium, aliquam soluta sed excepturi ullam deserunt dolorem molestiae pariatur
+				illum dolor placeat, blanditiis, ut architecto. Dolor earum deserunt optio unde eligendi,
+				tenetur facilis perferendis?
+			</p>
+		</section>
+	</main>
 </div>
+
+<style>
+	.title::before {
+		content: '';
+		margin: 1rem 0.5rem 0 0;
+		width: 100%;
+		height: 0.1rem;
+		background: var(--delft-blue);
+		width: 4rem;
+	}
+	.title::after {
+		content: '';
+		margin: 1rem 0 0 0.5rem;
+		width: 100%;
+		height: 0.1rem;
+		background: var(--delft-blue);
+	}
+</style>

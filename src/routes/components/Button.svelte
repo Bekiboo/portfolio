@@ -1,4 +1,4 @@
-<button class="colliding h-12 px-4 py-2 uppercase relative font-medium">
+<button class="relative h-12 px-4 py-2 font-medium uppercase colliding w-fit">
 	<slot />
 </button>
 
