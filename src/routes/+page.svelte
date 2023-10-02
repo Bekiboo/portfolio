@@ -18,11 +18,9 @@
 	} from '@tabler/icons-svelte'
 </script>
 
-<div
-	class="relative grid min-h-screen px-8 pt-10 text-slate-200 bg-slate-800 lg:grid-cols-2 md:px-24"
->
+<div class="relative grid max-w-screen-xl min-h-screen px-8 pt-10 mx-auto lg:grid-cols-2 md:px-24">
 	<header
-		class="grid gap-10 mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:flex lg:max-h-screen lg:flex-col lg:justify-between lg:py-24"
+		class="mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:max-h-screen lg:justify-between lg:py-24"
 	>
 		<a href="/">
 			<h1 class="text-4xl font-bold tracking-wider font-bauhaus text-slate-200 sm:text-5xl">
@@ -32,7 +30,7 @@
 		<h2 class="mt-3 text-lg font-medium tracking-tight colliding text-slate-200 sm:text-xl">
 			Junior Front-End Engineer
 		</h2>
-		<p class="max-w-xs mt-4 leading-normal">
+		<p class="max-w-xs mt-4 mb-12 leading-normal text-slate-400">
 			I'm a design-minded, detail oriented Front-End Engineer passionate about combining clean code
 			with interactive design.
 		</p>
@@ -47,7 +45,7 @@
 
 			<div class="mb-2">
 				<h3 class="text-slate-200">Proficient</h3>
-				<ul class="flex">
+				<ul class="flex flex-wrap">
 					<li data-tooltip="Svelte/Sveltekit" class="hover:text-persian-red" use:tooltip>
 						<div class="pointer-events-none">
 							<IconBrandSvelte size={64} stroke={1} color={'currentColor'} />

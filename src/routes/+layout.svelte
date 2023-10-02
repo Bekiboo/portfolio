@@ -4,5 +4,7 @@
 </script>
 
 <!-- <GameWrapper> -->
-<slot />
+<div class="text-slate-200 bg-slate-800">
+	<slot />
+</div>
 <!-- </GameWrapper> -->
