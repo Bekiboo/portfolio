@@ -62,7 +62,7 @@
 			<li class="mr-5">
 				<a
 					class="block hover:text-persian-red"
-					href="https://www.linkedin.com/in/bchiang7/"
+					href="https://www.linkedin.com/in/julien-connault/"
 					target="_blank"
 					rel="noreferrer"
 					><span class="sr-only">LinkedIn</span>
