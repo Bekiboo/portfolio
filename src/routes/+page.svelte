@@ -185,7 +185,7 @@
 							<IconBrandAngular size={64} stroke={1} color={'currentColor'} />
 						</div>
 					</li>
-					<li data-tooltip="Angular" class="hover:text-persian-red" use:tooltip>
+					<li data-tooltip="Three.js" class="hover:text-persian-red" use:tooltip>
 						<div class="pointer-events-none">
 							<IconBrandThreejs size={64} stroke={1} color={'currentColor'} />
 						</div>
