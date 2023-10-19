@@ -16,6 +16,7 @@
 		IconBrandFirebase,
 		IconBrandAngular,
 		IconBrandLinkedin,
+		IconBrandThreejs,
 		IconMail
 	} from '@tabler/icons-svelte'
 
@@ -184,6 +185,11 @@
 							<IconBrandAngular size={64} stroke={1} color={'currentColor'} />
 						</div>
 					</li>
+					<li data-tooltip="Angular" class="hover:text-persian-red" use:tooltip>
+						<div class="pointer-events-none">
+							<IconBrandThreejs size={64} stroke={1} color={'currentColor'} />
+						</div>
+					</li>
 				</ul>
 			</div>
 		</section>
@@ -227,7 +233,7 @@
 							target="_blank"
 							href="https://mulligan.vercel.app/">Mulligan</a
 						>
-						<p>
+						<p class="text-slate-400">
 							A prototype Virtual Table Top app. In its current state it allows players to share a
 							board and move tokens around in realtime.
 						</p>
@@ -247,7 +253,7 @@
 							target="_blank"
 							href="https://bekiboo-sandbox.vercel.app/">Sandbox</a
 						>
-						<p>
+						<p class="text-slate-400">
 							A collection of small projects and experiments. This website is always evolving and
 							might be prone to bugs.
 						</p>
