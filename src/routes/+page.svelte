@@ -9,7 +9,6 @@
 		IconBrandSass,
 		IconBrandTailwind,
 		IconBrandGit,
-		IconBrandGithub,
 		IconBrandPython,
 		IconBrandMongodb,
 		IconBrandSupabase,
@@ -19,6 +18,29 @@
 		IconBrandThreejs,
 		IconMail
 	} from '@tabler/icons-svelte'
+
+	const technos = {
+		proficient: [
+			{ name: 'Svelte', comp: IconBrandSvelte },
+			{ name: 'Typescript', comp: IconBrandTypescript },
+			{ name: 'Javascript', comp: IconBrandJavascript },
+			{ name: 'HTML5', comp: IconBrandHtml5 },
+			{ name: 'CSS3', comp: IconBrandCss3 },
+			{ name: 'Tailwind', comp: IconBrandTailwind }
+		],
+		experienced: [
+			{ name: 'Git', comp: IconBrandGit },
+			{ name: 'Supabase', comp: IconBrandSupabase },
+			{ name: 'SASS', comp: IconBrandSass }
+		],
+		familiar: [
+			{ name: 'Python', comp: IconBrandPython },
+			{ name: 'Mongodb', comp: IconBrandMongodb },
+			{ name: 'Firebase', comp: IconBrandFirebase },
+			{ name: 'Angular', comp: IconBrandAngular },
+			{ name: 'Three.js', comp: IconBrandThreejs }
+		]
+	}
 
 	const copyEmail = () => {
 		const email = 'julien.connault@gmail.com'
@@ -57,7 +79,7 @@
 					target="_blank"
 					rel="noreferrer"
 					><span class="sr-only">GitHub</span>
-					<IconBrandGithub size={36} stroke={1} color={'currentColor'} />
+					<IconBrandGit size={36} stroke={1} color={'currentColor'} />
 				</a>
 			</li>
 			<li class="mr-5">
@@ -110,86 +132,37 @@
 			<div class="mb-2">
 				<h3 class="text-slate-200">Proficient</h3>
 				<ul class="flex flex-wrap">
-					<li data-tooltip="Svelte/Sveltekit" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandSvelte size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Typescript" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandTypescript size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Javascript" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandJavascript size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="HTML5" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandHtml5 size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="CSS3" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandCss3 size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Tailwind" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandTailwind size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
+					{#each technos.proficient as { name, comp }}
+						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+							<div class="pointer-events-none">
+								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
+							</div>
+						</li>
+					{/each}
 				</ul>
 			</div>
 			<div class="mb-2 text-slate-400">
 				<h3 class="text-slate-200">Experienced</h3>
 				<ul class="flex">
-					<li data-tooltip="Git" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandGit size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Supabase" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandSupabase size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="SASS" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandSass size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
+					{#each technos.experienced as { name, comp }}
+						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+							<div class="pointer-events-none">
+								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
+							</div>
+						</li>
+					{/each}
 				</ul>
 			</div>
 			<div class="mb-2 text-slate-600">
 				<h3 class="text-slate-200">Familiar</h3>
 				<ul class="flex">
-					<li data-tooltip="Python" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandPython size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="MongoDB" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandMongodb size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Firebase" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandFirebase size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Angular" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandAngular size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
-					<li data-tooltip="Three.js" class="hover:text-persian-red" use:tooltip>
-						<div class="pointer-events-none">
-							<IconBrandThreejs size={64} stroke={1} color={'currentColor'} />
-						</div>
-					</li>
+					{#each technos.familiar as { name, comp }}
+						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+							<div class="pointer-events-none">
+								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
+							</div>
+						</li>
+					{/each}
 				</ul>
 			</div>
 		</section>
