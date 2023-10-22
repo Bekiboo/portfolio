@@ -16,8 +16,11 @@
 		IconBrandAngular,
 		IconBrandLinkedin,
 		IconBrandThreejs,
-		IconMail
+		IconMail,
+		IconSql,
+		IconBrandGithub
 	} from '@tabler/icons-svelte'
+	import Project from './Project.svelte'
 
 	const technos = {
 		proficient: [
@@ -31,7 +34,8 @@
 		experienced: [
 			{ name: 'Git', comp: IconBrandGit },
 			{ name: 'Supabase', comp: IconBrandSupabase },
-			{ name: 'SASS', comp: IconBrandSass }
+			{ name: 'SASS', comp: IconBrandSass },
+			{ name: 'SQL', comp: IconSql }
 		],
 		familiar: [
 			{ name: 'Python', comp: IconBrandPython },
@@ -41,6 +45,33 @@
 			{ name: 'Three.js', comp: IconBrandThreejs }
 		]
 	}
+
+	const projects = [
+		{
+			title: 'Elevatus Foundation',
+			href: 'https://www.elevatus-foundation.org/',
+			src: 'image/logo-elevatus.svg',
+			desc: 'Website for the Elevatus Foundation, a non-profit organization that provides education for trafficked children in Madagascar.',
+			gitUrl: 'https://github.com/Bekiboo/Elevatus-2.0',
+			tags: ['Svelte', 'Tailwind', 'Supabase']
+		},
+		{
+			title: 'Mulligan',
+			href: 'https://mulligan.vercel.app/',
+			src: 'image/logo-mulligan.svg',
+			desc: 'A prototype Virtual Table Top app. In its current state it allows players to share a board and move tokens around in realtime.',
+			gitUrl: 'https://github.com/Bekiboo/mulligan',
+			tags: ['Svelte', 'Tailwind', 'Supabase']
+		},
+		{
+			title: 'Sandbox',
+			href: 'https://bekiboo-sandbox.vercel.app/',
+			src: 'image/logo-sandbox.svg',
+			desc: 'A collection of small projects and experiments. This website is always evolving and might be prone to bugs.',
+			gitUrl: 'https://github.com/Bekiboo/sandbox',
+			tags: ['Svelte', 'Tailwind', 'Daisy UI', 'Threlte', 'Konva']
+		}
+	]
 
 	const copyEmail = () => {
 		const email = 'julien.connault@gmail.com'
@@ -74,17 +105,17 @@
 		<ul class="flex items-center mt-8 ml-1" aria-label="Social media">
 			<li class="mr-5">
 				<a
-					class="block hover:text-persian-red"
+					class="block hover:text-blue-400"
 					href="https://github.com/Bekiboo"
 					target="_blank"
 					rel="noreferrer"
 					><span class="sr-only">GitHub</span>
-					<IconBrandGit size={36} stroke={1} color={'currentColor'} />
+					<IconBrandGithub size={36} stroke={1} color={'currentColor'} />
 				</a>
 			</li>
 			<li class="mr-5">
 				<a
-					class="block hover:text-persian-red"
+					class="block hover:text-blue-400"
 					href="https://www.linkedin.com/in/julien-connault/"
 					target="_blank"
 					rel="noreferrer"
@@ -94,7 +125,7 @@
 			</li>
 			<li class="mr-5">
 				<a
-					class="block hover:text-persian-red"
+					class="block hover:text-blue-400"
 					href="mailto:julien.connault@gmail.com"
 					target="_blank"
 					rel="noreferrer"
@@ -111,16 +142,18 @@
 		<section class="mb-12">
 			<h2 class="flex mb-2 text-2xl title"><span>Academics</span></h2>
 			<h3 class="text-xl">Bachelor of Science in Applied Technology</h3>
-			<a target="_blank" href="https://www.byui.edu/" class="text-slate-400 hover:underline"
-				>Brigham Young University Idaho</a
+			<a
+				target="_blank"
+				href="https://www.byui.edu/"
+				class="text-blue-400 hover:underline hover:text-blue-300">Brigham Young University Idaho</a
 			>
 
 			<ul class="mt-2">
-				<li>Certificate of Web Front-End – <span class="text-persian-red">2020</span></li>
-				<li>Certificate of Web Development – <span class="text-persian-red">2021</span></li>
-				<li>Certificate of Computer Programming – <span class="text-persian-red">2022</span></li>
+				<li>Certificate of Web Front-End – <span class="text-slate-400">2020</span></li>
+				<li>Certificate of Web Development – <span class="text-slate-400">2021</span></li>
+				<li>Certificate of Computer Programming – <span class="text-slate-400">2022</span></li>
 				<li>
-					Certificate of Business Analysis – <span class="text-persian-red">In Progress</span>
+					Certificate of Business Analysis – <span class="text-slate-400">In Progress</span>
 				</li>
 			</ul>
 		</section>
@@ -133,7 +166,7 @@
 				<h3 class="text-slate-200">Proficient</h3>
 				<ul class="flex flex-wrap">
 					{#each technos.proficient as { name, comp }}
-						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>
@@ -145,7 +178,7 @@
 				<h3 class="text-slate-200">Experienced</h3>
 				<ul class="flex">
 					{#each technos.experienced as { name, comp }}
-						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>
@@ -157,7 +190,7 @@
 				<h3 class="text-slate-200">Familiar</h3>
 				<ul class="flex">
 					{#each technos.familiar as { name, comp }}
-						<li data-tooltip={name} class="hover:text-persian-red" use:tooltip>
+						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>
@@ -173,78 +206,17 @@
 				<span class="whitespace-nowrap">Featured Projects</span>
 			</h2>
 
-			<ul class="flex flex-col gap-8">
-				<li class="grid grid-cols-12 gap-4">
-					<img
-						class="w-full col-span-2"
-						src="image/logo-elevatus.svg"
-						alt="Elevatus Foundation Logo"
-					/>
-					<div class="col-span-10">
-						<a
-							class="text-xl duration-100 hover:text-persian-red"
-							target="_blank"
-							href="https://www.elevatus-foundation.org/">Elevatus Foundation</a
-						>
-						<p class="text-slate-400">
-							Website for the Elevatus Foundation, a non-profit organization that provides education
-							for trafficked children in Madagascar.
-						</p>
-						<div class="flex gap-2 mt-2">
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Supabase</span>
-						</div>
-					</div>
-				</li>
-
-				<li class="grid grid-cols-12 gap-4">
-					<img class="w-full col-span-2" src="image/logo-mulligan.svg" alt="Mulligan Logo" />
-					<div class="col-span-10">
-						<a
-							class="text-xl duration-100 hover:text-persian-red"
-							target="_blank"
-							href="https://mulligan.vercel.app/">Mulligan</a
-						>
-						<p class="text-slate-400">
-							A prototype Virtual Table Top app. In its current state it allows players to share a
-							board and move tokens around in realtime.
-						</p>
-						<div class="flex gap-2 mt-2">
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Supabase</span>
-						</div>
-					</div>
-				</li>
-
-				<li class="grid grid-cols-12 gap-4">
-					<img class="w-full col-span-2" src="image/logo-sandbox.svg" alt="Sandbox Logo" />
-					<div class="col-span-10">
-						<a
-							class="text-xl duration-100 hover:text-persian-red"
-							target="_blank"
-							href="https://bekiboo-sandbox.vercel.app/">Sandbox</a
-						>
-						<p class="text-slate-400">
-							A collection of small projects and experiments. This website is always evolving and
-							might be prone to bugs.
-						</p>
-						<div class="flex flex-wrap gap-2 mt-2">
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Svelte</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Tailwind</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Daisy UI</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Threlte</span>
-							<span class="px-2 rounded-full text-slate-300 bg-slate-700">Konva</span>
-						</div>
-					</div>
-				</li>
-			</ul>
+			<div class="flex flex-col gap-4">
+				{#each projects as project}
+					<Project {project} />
+				{/each}
+			</div>
 		</section>
 	</main>
 </div>
 
 <style>
+	/* Lines through titles */
 	.title::before {
 		content: '';
 		margin: 1rem 0.5rem 0 0;
@@ -262,7 +234,7 @@
 	}
 
 	button {
-		box-shadow: 0.3em 0.3em 0 0 #880505, inset 6em 3.5em 0 0 var(--persian-red);
+		box-shadow: 0.3em 0.3em 0 0 rgb(30 58 138), inset 6em 3.5em 0 0 rgb(37 99 235);
 
 		transition: box-shadow 0.2s ease-in-out;
 	}
@@ -270,6 +242,6 @@
 	button:hover,
 	button:focus {
 		outline: none;
-		box-shadow: 0.3em 0.3em 0 0 var(--persian-red), inset 0.3em 0.3em 0 0 var(--persian-red);
+		box-shadow: 0.3em 0.3em 0 0 rgb(37 99 235), inset 0.3em 0.3em 0 0 rgb(37 99 235);
 	}
 </style>
