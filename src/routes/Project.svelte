@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { IconExternalLink, IconBrandGithub } from '@tabler/icons-svelte'
+	import { fly, slide } from 'svelte/transition'
 
 	export let project
 	const { title, desc, src, href, gitUrl, tags } = project
 
 	let logoHovered = false
+	let gitHovered = false
 
-	const enterLogo = (e: MouseEvent) => {
-		logoHovered = true
-	}
-	const leaveLogo = (e: MouseEvent) => {
-		logoHovered = false
-	}
+	const enterLogo = () => (logoHovered = true)
+	const leaveLogo = () => (logoHovered = false)
+	const enterGit = () => (gitHovered = true)
+	const leaveGit = () => (gitHovered = false)
 </script>
 
 <div class="grid grid-cols-12 gap-8 duration-100">
@@ -39,9 +39,14 @@
 			<a
 				target="_blank"
 				href={gitUrl}
-				class="flex items-center justify-center gap-2 px-2 duration-100 bg-blue-900 rounded-full hover:bg-blue-600 text-slate-300"
+				on:mouseenter={enterGit}
+				on:mouseleave={leaveGit}
+				class="flex items-center justify-center h-10 gap-2 px-2 overflow-hidden duration-100 bg-blue-900 rounded-full hover:bg-blue-700 text-slate-300"
 			>
-				<span>GitHub</span>
+				<!-- <span class="translate-x-20">GitHub</span> -->
+				{#if gitHovered}
+					<span transition:slide={{ axis: 'x', duration: 100 }}>GitHub</span>
+				{/if}
 				<IconBrandGithub color={'currentColor'} size={24} />
 			</a>
 		</div>
