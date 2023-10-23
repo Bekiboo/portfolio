@@ -80,7 +80,7 @@
 	}
 </script>
 
-<div class="relative grid max-w-screen-xl min-h-screen px-8 pt-10 mx-auto lg:grid-cols-2 md:px-24">
+<div class="relative grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto lg:grid-cols-2 md:px-24">
 	<header
 		class="mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:max-h-screen lg:justify-between lg:py-24"
 	>
@@ -206,7 +206,7 @@
 				<span class="whitespace-nowrap">Featured Projects</span>
 			</h2>
 
-			<div class="flex flex-col gap-4">
+			<div class="flex flex-col gap-8">
 				{#each projects as project}
 					<Project {project} />
 				{/each}

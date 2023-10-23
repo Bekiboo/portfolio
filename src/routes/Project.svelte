@@ -14,7 +14,7 @@
 	const leaveGit = () => (gitHovered = false)
 </script>
 
-<div class="grid grid-cols-12 gap-8 duration-100">
+<div class="grid grid-cols-12 gap-4 duration-100">
 	<a class="col-span-2" target="_blank" {href}
 		><img
 			class="w-full text-blue-500"
@@ -41,11 +41,12 @@
 				href={gitUrl}
 				on:mouseenter={enterGit}
 				on:mouseleave={leaveGit}
-				class="flex items-center justify-center h-8 gap-2 px-1 overflow-hidden duration-100 bg-blue-900 rounded-full hover:bg-blue-700 text-slate-300"
+				class="flex items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 bg-blue-900 rounded-full hover:bg-blue-700 text-slate-300"
 			>
 				<!-- <span class="translate-x-20">GitHub</span> -->
 				{#if gitHovered}
-					<span transition:slide={{ axis: 'x', duration: 100 }}>GitHub</span>
+					<span class="hidden sm:block" transition:slide={{ axis: 'x', duration: 100 }}>GitHub</span
+					>
 				{/if}
 				<IconBrandGithub color={'currentColor'} size={24} />
 			</a>
