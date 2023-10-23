@@ -2,12 +2,14 @@
 	export let message: string
 	export let x: number
 	export let y: number
+	let tooltipWidth: number
 </script>
 
 <div
+	bind:clientWidth={tooltipWidth}
 	style="
-		top: {y + 5}px;
-		left: {x + 10}px;"
+		top: {y - 36}px;
+		left: {x - tooltipWidth / 2}px;"
 >
 	{message}
 </div>

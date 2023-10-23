@@ -80,7 +80,7 @@
 	}
 </script>
 
-<div class="relative grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto lg:grid-cols-2 md:px-24">
+<div class="grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto lg:grid-cols-2 md:px-24">
 	<header
 		class="mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:max-h-screen lg:justify-between lg:py-24"
 	>
@@ -97,9 +97,8 @@
 			with interactive design.
 		</p>
 
-		<button
-			class="relative w-48 h-12 px-4 py-2 font-medium uppercase colliding"
-			on:click={copyEmail}>Copy Email</button
+		<button class="w-48 h-12 px-4 py-2 font-medium uppercase colliding" on:click={copyEmail}
+			>Copy Email</button
 		>
 
 		<ul class="flex items-center mt-8 ml-1" aria-label="Social media">
