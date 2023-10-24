@@ -18,7 +18,8 @@
 		IconBrandThreejs,
 		IconMail,
 		IconSql,
-		IconBrandGithub
+		IconBrandGithub,
+		IconExternalLink
 	} from '@tabler/icons-svelte'
 	import Project from './Project.svelte'
 
@@ -144,7 +145,9 @@
 			<a
 				target="_blank"
 				href="https://www.byui.edu/"
-				class="text-blue-400 hover:underline hover:text-blue-300">Brigham Young University Idaho</a
+				class="text-blue-400 hover:underline hover:text-blue-300 flex gap-1"
+				>Brigham Young University Idaho
+				<IconExternalLink size={20} /></a
 			>
 
 			<ul class="mt-2">
