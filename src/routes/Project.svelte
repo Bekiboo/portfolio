@@ -45,7 +45,8 @@
 			>
 				<!-- <span class="translate-x-20">GitHub</span> -->
 				{#if gitHovered}
-					<span class="hidden sm:block" transition:slide={{ axis: 'x', duration: 100 }}>GitHub</span
+					<span class="hidden sm:block ml-1" transition:slide={{ axis: 'x', duration: 100 }}
+						>GitHub</span
 					>
 				{/if}
 				<IconBrandGithub color={'currentColor'} size={24} />
