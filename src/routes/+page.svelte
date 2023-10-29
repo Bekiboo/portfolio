@@ -22,28 +22,29 @@
 		IconExternalLink
 	} from '@tabler/icons-svelte'
 	import Project from './Project.svelte'
+	import { colorHover } from '$lib/colorHover'
 
 	const technos = {
 		proficient: [
-			{ name: 'Svelte', comp: IconBrandSvelte },
-			{ name: 'Typescript', comp: IconBrandTypescript },
-			{ name: 'Javascript', comp: IconBrandJavascript },
-			{ name: 'HTML5', comp: IconBrandHtml5 },
-			{ name: 'CSS3', comp: IconBrandCss3 },
-			{ name: 'Tailwind', comp: IconBrandTailwind }
+			{ name: 'Svelte', comp: IconBrandSvelte, color: '#ff3e00' },
+			{ name: 'Typescript', comp: IconBrandTypescript, color: '#007acc' },
+			{ name: 'Javascript', comp: IconBrandJavascript, color: '#f7df1e' },
+			{ name: 'HTML5', comp: IconBrandHtml5, color: '#e34f26' },
+			{ name: 'CSS3', comp: IconBrandCss3, color: '#264de4' },
+			{ name: 'Tailwind', comp: IconBrandTailwind, color: '#06b6d4' }
 		],
 		experienced: [
-			{ name: 'Git', comp: IconBrandGit },
-			{ name: 'Supabase', comp: IconBrandSupabase },
-			{ name: 'SASS', comp: IconBrandSass },
-			{ name: 'SQL', comp: IconSql }
+			{ name: 'Git', comp: IconBrandGit, color: '#f05032' },
+			{ name: 'Supabase', comp: IconBrandSupabase, color: '#3ecf8e' },
+			{ name: 'SASS', comp: IconBrandSass, color: '#cc6699' },
+			{ name: 'SQL', comp: IconSql, color: '#f29111' }
 		],
 		familiar: [
-			{ name: 'Python', comp: IconBrandPython },
-			{ name: 'Mongodb', comp: IconBrandMongodb },
-			{ name: 'Firebase', comp: IconBrandFirebase },
-			{ name: 'Angular', comp: IconBrandAngular },
-			{ name: 'Three.js', comp: IconBrandThreejs }
+			{ name: 'Python', comp: IconBrandPython, color: '#3776ab' },
+			{ name: 'Mongodb', comp: IconBrandMongodb, color: '#4db33d' },
+			{ name: 'Firebase', comp: IconBrandFirebase, color: '#ffca28' },
+			{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
+			{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' }
 		]
 	}
 
@@ -145,7 +146,7 @@
 			<a
 				target="_blank"
 				href="https://www.byui.edu/"
-				class="text-blue-400 hover:underline hover:text-blue-300 flex gap-1"
+				class="flex gap-1 text-blue-400 hover:underline hover:text-blue-300"
 				>Brigham Young University Idaho
 				<IconExternalLink size={20} /></a
 			>
@@ -154,9 +155,7 @@
 				<li>Certificate of Web Front-End – <span class="text-slate-400">2020</span></li>
 				<li>Certificate of Web Development – <span class="text-slate-400">2021</span></li>
 				<li>Certificate of Computer Programming – <span class="text-slate-400">2022</span></li>
-				<li>
-					Certificate of Business Analysis – <span class="text-slate-400">In Progress</span>
-				</li>
+				<li>Certificate of Business Analysis – <span class="text-slate-400">In Progress</span></li>
 			</ul>
 		</section>
 
@@ -167,8 +166,8 @@
 			<div class="mb-2">
 				<h3 class="text-slate-200">Proficient</h3>
 				<ul class="flex flex-wrap">
-					{#each technos.proficient as { name, comp }}
-						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
+					{#each technos.proficient as { name, comp, color }}
+						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>
@@ -179,8 +178,8 @@
 			<div class="mb-2 text-slate-400">
 				<h3 class="text-slate-200">Experienced</h3>
 				<ul class="flex">
-					{#each technos.experienced as { name, comp }}
-						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
+					{#each technos.experienced as { name, comp, color }}
+						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>
@@ -191,8 +190,8 @@
 			<div class="mb-2 text-slate-600">
 				<h3 class="text-slate-200">Familiar</h3>
 				<ul class="flex">
-					{#each technos.familiar as { name, comp }}
-						<li data-tooltip={name} class="hover:text-blue-500" use:tooltip>
+					{#each technos.familiar as { name, comp, color }}
+						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
 							<div class="pointer-events-none">
 								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
 							</div>

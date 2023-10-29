@@ -8,7 +8,7 @@
 <div
 	bind:clientWidth={tooltipWidth}
 	style="
-		top: {y - 36}px;
+		top: {y - 56}px;
 		left: {x - tooltipWidth / 2}px;"
 >
 	{message}
