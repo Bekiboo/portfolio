@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { tooltip } from '$lib/tooltip/tooltip'
 	import {
 		IconBrandSvelte,
 		IconBrandJavascript,
@@ -19,34 +18,55 @@
 		IconMail,
 		IconSql,
 		IconBrandGithub,
-		IconExternalLink
+		IconExternalLink,
+		IconBrandVite
 	} from '@tabler/icons-svelte'
 	import Project from './Project.svelte'
-	import { colorHover } from '$lib/colorHover'
+	import Technos from './Technos.svelte'
 
-	const technos = {
-		proficient: [
-			{ name: 'Svelte', comp: IconBrandSvelte, color: '#ff3e00' },
-			{ name: 'Typescript', comp: IconBrandTypescript, color: '#007acc' },
-			{ name: 'Javascript', comp: IconBrandJavascript, color: '#f7df1e' },
-			{ name: 'HTML5', comp: IconBrandHtml5, color: '#e34f26' },
-			{ name: 'CSS3', comp: IconBrandCss3, color: '#264de4' },
-			{ name: 'Tailwind', comp: IconBrandTailwind, color: '#06b6d4' }
-		],
-		experienced: [
-			{ name: 'Git', comp: IconBrandGit, color: '#f05032' },
-			{ name: 'Supabase', comp: IconBrandSupabase, color: '#3ecf8e' },
-			{ name: 'SASS', comp: IconBrandSass, color: '#cc6699' },
-			{ name: 'SQL', comp: IconSql, color: '#f29111' }
-		],
-		familiar: [
-			{ name: 'Python', comp: IconBrandPython, color: '#3776ab' },
-			{ name: 'Mongodb', comp: IconBrandMongodb, color: '#4db33d' },
-			{ name: 'Firebase', comp: IconBrandFirebase, color: '#ffca28' },
-			{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
-			{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' }
-		]
-	}
+	const skills = [
+		{
+			level: 'Advanced',
+			baseColor: 'rgb(226 232 240)',
+			technos: [
+				{ name: 'Svelte', comp: IconBrandSvelte, color: '#ff3e00' },
+				{ name: 'Javascript', comp: IconBrandJavascript, color: '#f7df1e' },
+				{ name: 'HTML5', comp: IconBrandHtml5, color: '#e34f26' },
+				{ name: 'CSS3', comp: IconBrandCss3, color: '#264de4' }
+			]
+		},
+		{
+			level: 'Proficient',
+			baseColor: 'rgb(203 213 225)',
+			technos: [
+				{ name: 'Typescript', comp: IconBrandTypescript, color: '#007acc' },
+				{ name: 'Javascript', comp: IconBrandJavascript, color: '#f7df1e' },
+				{ name: 'Supabase', comp: IconBrandSupabase, color: '#3ecf8e' },
+				{ name: 'Tailwind', comp: IconBrandTailwind, color: '#06b6d4' }
+			]
+		},
+		{
+			level: 'Experienced',
+			baseColor: 'rgb(162 175 204)',
+			technos: [
+				{ name: 'Git', comp: IconBrandGit, color: '#f05032' },
+				{ name: 'SASS', comp: IconBrandSass, color: '#cc6699' },
+				{ name: 'SQL', comp: IconSql, color: '#f29111' },
+				{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
+				{ name: 'Vite', comp: IconBrandVite, color: '#646cff' }
+			]
+		},
+		{
+			level: 'Familiar',
+			baseColor: 'rgb(128 138 157)',
+			technos: [
+				{ name: 'Python', comp: IconBrandPython, color: '#3776ab' },
+				{ name: 'Mongodb', comp: IconBrandMongodb, color: '#4db33d' },
+				{ name: 'Firebase', comp: IconBrandFirebase, color: '#ffca28' },
+				{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' }
+			]
+		}
+	]
 
 	const projects = [
 		{
@@ -163,42 +183,7 @@
 		<section class="mb-12">
 			<h2 class="flex mb-2 text-2xl title"><span>Technologies</span></h2>
 
-			<div class="mb-2">
-				<h3 class="text-slate-200">Proficient</h3>
-				<ul class="flex flex-wrap">
-					{#each technos.proficient as { name, comp, color }}
-						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
-							<div class="pointer-events-none">
-								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</div>
-			<div class="mb-2 text-slate-400">
-				<h3 class="text-slate-200">Experienced</h3>
-				<ul class="flex">
-					{#each technos.experienced as { name, comp, color }}
-						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
-							<div class="pointer-events-none">
-								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</div>
-			<div class="mb-2 text-slate-600">
-				<h3 class="text-slate-200">Familiar</h3>
-				<ul class="flex">
-					{#each technos.familiar as { name, comp, color }}
-						<li data-tooltip={name} data-color={color} use:tooltip use:colorHover>
-							<div class="pointer-events-none">
-								<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</div>
+			<Technos {skills} />
 		</section>
 
 		<!---------- PROJECTS ---------->

@@ -42,10 +42,10 @@
 				aria-label="GitHub Repository"
 				on:mouseenter={enterGit}
 				on:mouseleave={leaveGit}
-				class="flex items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 bg-blue-900 rounded-full hover:bg-blue-700 text-slate-300"
+				class="flex items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 hover:bg-blue-700 text-slate-300"
 			>
 				{#if gitHovered}
-					<span class="hidden sm:block ml-1" transition:slide={{ axis: 'x', duration: 100 }}
+					<span class="hidden ml-1 sm:block" transition:slide={{ axis: 'x', duration: 100 }}
 						>GitHub</span
 					>
 				{/if}
