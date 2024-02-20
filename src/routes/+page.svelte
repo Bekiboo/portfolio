@@ -39,8 +39,8 @@
 			level: 'Proficient',
 			baseColor: 'rgb(203 213 225)',
 			technos: [
+				{ name: 'Git', comp: IconBrandGit, color: '#f05032' },
 				{ name: 'Typescript', comp: IconBrandTypescript, color: '#007acc' },
-				{ name: 'Javascript', comp: IconBrandJavascript, color: '#f7df1e' },
 				{ name: 'Supabase', comp: IconBrandSupabase, color: '#3ecf8e' },
 				{ name: 'Tailwind', comp: IconBrandTailwind, color: '#06b6d4' }
 			]
@@ -49,7 +49,6 @@
 			level: 'Experienced',
 			baseColor: 'rgb(162 175 204)',
 			technos: [
-				{ name: 'Git', comp: IconBrandGit, color: '#f05032' },
 				{ name: 'SASS', comp: IconBrandSass, color: '#cc6699' },
 				{ name: 'SQL', comp: IconSql, color: '#f29111' },
 				{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
