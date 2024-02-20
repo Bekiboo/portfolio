@@ -19,7 +19,8 @@
 		IconSql,
 		IconBrandGithub,
 		IconExternalLink,
-		IconBrandVite
+		IconBrandVite,
+		IconBrandGraphql
 	} from '@tabler/icons-svelte'
 	import Project from './Project.svelte'
 	import Technos from './Technos.svelte'
@@ -62,7 +63,8 @@
 				{ name: 'Python', comp: IconBrandPython, color: '#3776ab' },
 				{ name: 'Mongodb', comp: IconBrandMongodb, color: '#4db33d' },
 				{ name: 'Firebase', comp: IconBrandFirebase, color: '#ffca28' },
-				{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' }
+				{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' },
+				{ name: 'GraphQL', comp: IconBrandGraphql, color: '#e535ab' }
 			]
 		}
 	]
