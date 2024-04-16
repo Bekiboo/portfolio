@@ -16,7 +16,7 @@
 	{#each skills as { technos, level, baseColor }}
 		<div>
 			<h3>{level}</h3>
-			<ul class="flex">
+			<ul class="flex flex-wrap">
 				{#each technos as { name, comp, color }}
 					<li
 						data-tooltip={name}

@@ -21,7 +21,8 @@
 		IconExternalLink,
 		IconBrandVite,
 		IconBrandGraphql,
-		IconBrandPrisma
+		IconBrandPrisma,
+		IconBrandStripe
 	} from '@tabler/icons-svelte'
 	import Project from './Project.svelte'
 	import Technos from './Technos.svelte'
@@ -55,7 +56,8 @@
 				{ name: 'SQL', comp: IconSql, color: '#f29111' },
 				{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
 				{ name: 'Vite', comp: IconBrandVite, color: '#646cff' },
-				{ name: 'Prisma', comp: IconBrandPrisma, color: '#2d3748' }
+				{ name: 'Prisma', comp: IconBrandPrisma, color: '#2d3748' },
+				{ name: 'Stripe', comp: IconBrandStripe, color: '#6772e5' }
 			]
 		},
 		{
