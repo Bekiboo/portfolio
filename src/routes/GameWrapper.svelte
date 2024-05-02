@@ -3,8 +3,6 @@
 	import { Platform } from './platformer-logic/Platform'
 	import { Player } from './platformer-logic/Player'
 
-	let content: HTMLDivElement
-
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
 
@@ -26,6 +24,7 @@
 				keys.right = true
 				break
 			case 'KeyW':
+				keys.up = true
 				player.velocity.y = -12
 				break
 			case 'KeyS':
@@ -94,7 +93,7 @@
 <div class="wrapper">
 	<canvas class="z-10" />
 
-	<div class="content" bind:this={content}>
+	<div class="content">
 		<slot />
 	</div>
 </div>

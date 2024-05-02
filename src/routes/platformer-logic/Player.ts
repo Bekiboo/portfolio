@@ -8,7 +8,7 @@ export class Player {
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
-	speed = 4
+	speed = 6
 	image = loadImage('/Biker/Biker_idle.png')
 	maxFrame = 3
 	frame = 0
@@ -26,22 +26,45 @@ export class Player {
 
 	draw(ctx: CanvasRenderingContext2D) {
 		this.#animate()
+		if (this.direction === 'right') {
+			ctx.drawImage(
+				this.image,
+				this.frame * this.width,
+				8,
+				this.width,
+				this.height,
+				this.pos.x,
+				this.pos.y,
+				this.width * 2,
+				this.height * 2
+			)
+		} else {
+			this.#drawFlipped(ctx)
+		}
+	}
+
+	#drawFlipped(ctx: CanvasRenderingContext2D) {
+		ctx.save()
+		ctx.translate(this.pos.x + this.width, this.pos.y)
+		ctx.scale(-1, 1)
 		ctx.drawImage(
 			this.image,
 			this.frame * this.width,
 			8,
 			this.width,
 			this.height,
-			this.pos.x,
-			this.pos.y,
+			0,
+			0,
 			this.width * 2,
 			this.height * 2
 		)
+		ctx.restore()
 	}
 
 	update(canvas: HTMLCanvasElement, keys: { [key: string]: boolean }, platforms: Platform[]) {
 		this.pos.x += this.velocity.x // move left/right
 
+		// Order of these methods is important
 		this.#checkForHorizontalCollisions(platforms)
 		this.#applyGravity()
 		this.#keepWithinCanvas(canvas)
@@ -49,10 +72,7 @@ export class Player {
 
 		this.velocity.x = 0 // reset velocity
 
-		if (keys['left']) {
-			this.velocity.x -= this.speed
-		}
-		if (keys['right']) this.velocity.x += this.speed
+		this.#handleKeys(keys)
 	}
 
 	#animate() {
@@ -64,6 +84,40 @@ export class Player {
 			} else {
 				this.frame = 0
 			}
+		}
+	}
+
+	#handleKeys(keys: { [key: string]: boolean }) {
+		if (keys['up']) {
+			this.image = loadImage('/Biker/Biker_jump.png')
+			this.maxFrame = 3
+			if (this.frame > 3) this.frame = 0
+			this.velocity.y = -10
+		}
+
+		if ((keys['right'] || keys['left']) && !this.velocity.y) {
+			this.image = loadImage('/Biker/Biker_run.png')
+			this.maxFrame = 5
+			if (this.frame > 5) this.frame = 0
+		}
+
+		if (keys['down']) {
+			this.velocity.y = 10
+		}
+
+		if (keys['left']) {
+			this.direction = 'left'
+			this.velocity.x -= this.speed
+		}
+		if (keys['right']) {
+			this.direction = 'right'
+			this.velocity.x += this.speed
+		}
+
+		if (!keys['up'] && !keys['down'] && !keys['left'] && !keys['right']) {
+			this.image = loadImage('/Biker/Biker_idle.png')
+			this.maxFrame = 3
+			if (this.frame > 3) this.frame = 0
 		}
 	}
 
