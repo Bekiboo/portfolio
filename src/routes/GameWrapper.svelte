@@ -51,18 +51,25 @@
 		}
 	}
 
+	let count = 0
+
 	const animate = () => {
-		canvas.width = content.clientWidth
-		canvas.height = content.clientHeight
+		canvas.width = canvas.clientWidth
+		canvas.height = canvas.clientHeight
 
 		ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-		let collidingElements = document.getElementsByClassName('colliding')
+		let collidingElements = document.querySelectorAll('[data-colliding]')
+		if (count < 1) {
+			console.log(collidingElements[0].getBoundingClientRect())
+			count++
+		}
+
 		let platforms: Platform[] = []
 
 		for (let i = 0; i < collidingElements.length; i++) {
-			let el = collidingElements[i] as HTMLDivElement
-			let platform = new Platform(el.offsetWidth, el.offsetHeight, el.offsetTop, el.offsetLeft)
+			let el = collidingElements[i].getBoundingClientRect()
+			let platform = new Platform(el.width, el.height, el.y, el.x)
 			platforms.push(platform)
 
 			platform.draw(ctx)
@@ -85,7 +92,7 @@
 </script>
 
 <div class="wrapper">
-	<canvas />
+	<canvas class="z-10" />
 
 	<div class="content" bind:this={content}>
 		<slot />
@@ -102,10 +109,12 @@
 		min-height: 100vh;
 	}
 	canvas {
+		position: fixed;
 		grid-column: 1;
 		grid-row: 1;
-		width: 100%;
-		height: 100%;
+		width: 100vw;
+		height: 100vh;
+		pointer-events: none;
 	}
 
 	.content {

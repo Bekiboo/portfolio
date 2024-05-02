@@ -1,10 +1,18 @@
 <script>
 	import '../app.css'
-	// import GameWrapper from './GameWrapper.svelte'
+	import GameWrapper from './GameWrapper.svelte'
+
+	let windowWidth = 0
 </script>
 
-<!-- <GameWrapper> -->
 <div class="text-slate-200 bg-slate-800">
-	<slot />
+	{#if windowWidth > 1024}
+		<GameWrapper>
+			<slot />
+		</GameWrapper>
+	{:else}
+		<slot />
+	{/if}
 </div>
-<!-- </GameWrapper> -->
+
+<svelte:window bind:innerWidth={windowWidth} />
