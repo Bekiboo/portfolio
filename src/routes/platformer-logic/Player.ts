@@ -15,6 +15,8 @@ export class Player {
 	ticksPerFrame = 10
 	ticksCount = 0
 	direction = 'right'
+	isFalling = false
+	jumpAvailable = 2
 
 	constructor(pos: { x: number; y: number }) {
 		this.pos = pos
@@ -88,21 +90,10 @@ export class Player {
 	}
 
 	#handleKeys(keys: { [key: string]: boolean }) {
-		if (keys['up']) {
-			this.image = loadImage('/Biker/Biker_jump.png')
-			this.maxFrame = 3
-			if (this.frame > 3) this.frame = 0
-			this.velocity.y = -10
-		}
-
 		if ((keys['right'] || keys['left']) && !this.velocity.y) {
 			this.image = loadImage('/Biker/Biker_run.png')
 			this.maxFrame = 5
 			if (this.frame > 5) this.frame = 0
-		}
-
-		if (keys['down']) {
-			this.velocity.y = 10
 		}
 
 		if (keys['left']) {
@@ -119,6 +110,17 @@ export class Player {
 			this.maxFrame = 3
 			if (this.frame > 3) this.frame = 0
 		}
+	}
+
+	jump() {
+		if (this.isFalling && !this.jumpAvailable) return
+
+		this.image = loadImage('/Biker/Biker_jump.png')
+		this.maxFrame = 3
+		if (this.frame > 3) this.frame = 0
+		this.velocity.y = -15
+		this.isFalling = true
+		this.jumpAvailable--
 	}
 
 	#checkForHorizontalCollisions(platforms: Platform[]) {
@@ -160,9 +162,11 @@ export class Player {
 				)
 			) {
 				if (this.velocity.y > 0) {
-					// hit bottom
+					// hit floor
 					this.velocity.y = 0 // stop falling
 					this.pos.y = platform.top - this.height - 0.01
+					this.isFalling = false
+					this.jumpAvailable = 2
 					break
 				}
 
@@ -181,6 +185,8 @@ export class Player {
 		if (this.pos.y + this.height > canvas.height) {
 			this.velocity.y = 0
 			this.pos.y = canvas.height - this.height
+			this.isFalling = false
+			this.jumpAvailable = 2
 		}
 
 		// stop from going off the sides

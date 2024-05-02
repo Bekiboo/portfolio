@@ -25,7 +25,7 @@
 				break
 			case 'KeyW':
 				keys.up = true
-				player.velocity.y = -12
+				player.jump()
 				break
 			case 'KeyS':
 				keys.down = true
