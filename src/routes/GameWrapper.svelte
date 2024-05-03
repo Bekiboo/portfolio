@@ -68,7 +68,6 @@
 
 		let collidingElements = document.querySelectorAll('[data-colliding]')
 		if (count < 1) {
-			console.log(collidingElements[0].getBoundingClientRect())
 			count++
 		}
 
