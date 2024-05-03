@@ -3,16 +3,44 @@ import { collision, loadImage } from './utils'
 
 const GRAVITY = 0.5
 
+type Sprite = {
+	frames: number
+	img: HTMLImageElement
+}
+
+const sprites: { [key: string]: Sprite } = {
+	idle: {
+		frames: 3,
+		img: loadImage('/Biker/Biker_idle.png')
+	},
+	run: {
+		frames: 5,
+		img: loadImage('/Biker/Biker_run.png')
+	},
+	jump: {
+		frames: 3,
+		img: loadImage('/Biker/Biker_jump.png')
+	},
+	punch: {
+		frames: 5,
+		img: loadImage('/Biker/Biker_attack1.png')
+	},
+	run_attack: {
+		frames: 5,
+		img: loadImage('/Biker/Biker_run_attack.png')
+	}
+}
+
 export class Player {
 	pos: { x: number; y: number }
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
-	speed = 6
-	image = loadImage('/Biker/Biker_idle.png')
-	maxFrame = 3
+	speed = 8
+	image = sprites.idle.img
+	maxFrame = sprites.idle.frames
 	frame = 0
-	ticksPerFrame = 10
+	ticksPerFrame = 5
 	ticksCount = 0
 	direction = 'right'
 	isFalling = false
@@ -28,6 +56,7 @@ export class Player {
 
 	draw(ctx: CanvasRenderingContext2D) {
 		this.#animate()
+
 		if (this.direction === 'right') {
 			ctx.drawImage(
 				this.image,
@@ -72,7 +101,9 @@ export class Player {
 		this.#keepWithinCanvas(canvas)
 		this.#checkForVerticalCollisions(platforms)
 
-		this.velocity.x = 0 // reset velocity
+		if (this.velocity.x != 0) {
+			this.velocity.x > 0 ? this.velocity.x-- : this.velocity.x++ // reset velocity
+		}
 
 		this.#handleKeys(keys)
 	}
@@ -90,37 +121,50 @@ export class Player {
 	}
 
 	#handleKeys(keys: { [key: string]: boolean }) {
-		if ((keys['right'] || keys['left']) && !this.velocity.y) {
-			this.image = loadImage('/Biker/Biker_run.png')
-			this.maxFrame = 5
-			if (this.frame > 5) this.frame = 0
+		if ((keys['right'] || keys['left']) && !this.velocity.y && !keys['punch']) {
+			this.#useSprite('run')
 		}
 
 		if (keys['left']) {
 			this.direction = 'left'
-			this.velocity.x -= this.speed
+			this.velocity.x = -this.speed
 		}
 		if (keys['right']) {
 			this.direction = 'right'
-			this.velocity.x += this.speed
+			this.velocity.x = this.speed
 		}
 
-		if (!keys['up'] && !keys['down'] && !keys['left'] && !keys['right']) {
-			this.image = loadImage('/Biker/Biker_idle.png')
-			this.maxFrame = 3
-			if (this.frame > 3) this.frame = 0
+		if (!keys['up'] && !keys['down'] && !keys['left'] && !keys['right'] && !keys['punch']) {
+			this.#useSprite('idle')
 		}
+	}
+
+	#useSprite(animation: string) {
+		this.image = sprites[animation].img
+		this.maxFrame = sprites[animation].frames
+		if (this.frame > sprites[animation].frames) this.frame = 0
 	}
 
 	jump() {
 		if (this.isFalling && !this.jumpAvailable) return
 
-		this.image = loadImage('/Biker/Biker_jump.png')
-		this.maxFrame = 3
-		if (this.frame > 3) this.frame = 0
+		this.#useSprite('jump')
 		this.velocity.y = -15
 		this.isFalling = true
 		this.jumpAvailable--
+	}
+
+	punch(keys: { [key: string]: boolean }) {
+		if (keys['right'] || keys['left']) {
+			this.#useSprite('run_attack')
+		} else {
+			this.#useSprite('punch')
+		}
+	}
+
+	#applyGravity() {
+		this.pos.y += this.velocity.y
+		this.velocity.y += GRAVITY
 	}
 
 	#checkForHorizontalCollisions(platforms: Platform[]) {
@@ -146,11 +190,6 @@ export class Player {
 				}
 			}
 		}
-	}
-
-	#applyGravity() {
-		this.pos.y += this.velocity.y
-		this.velocity.y += GRAVITY
 	}
 
 	#checkForVerticalCollisions(platforms: Platform[]) {

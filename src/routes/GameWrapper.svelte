@@ -12,7 +12,8 @@
 		left: false,
 		right: false,
 		up: false,
-		down: false
+		down: false,
+		punch: false
 	}
 
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -30,6 +31,10 @@
 			case 'KeyS':
 				keys.down = true
 				break
+			case 'KeyK':
+				keys.punch = true
+				player.punch(keys)
+				break
 		}
 	}
 
@@ -46,6 +51,9 @@
 				break
 			case 'KeyS':
 				keys.down = false
+				break
+			case 'KeyK':
+				keys.punch = false
 				break
 		}
 	}
