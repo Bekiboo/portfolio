@@ -5,12 +5,14 @@ const GRAVITY = 0.5
 
 type Sprite = {
 	frames: number
+	speed?: number
 	img: HTMLImageElement
 }
 
 const sprites: { [key: string]: Sprite } = {
 	idle: {
 		frames: 3,
+		speed: 10,
 		img: loadImage('/Biker/Biker_idle.png')
 	},
 	run: {
@@ -19,10 +21,12 @@ const sprites: { [key: string]: Sprite } = {
 	},
 	jump: {
 		frames: 3,
+		speed: 10,
 		img: loadImage('/Biker/Biker_jump.png')
 	},
 	punch: {
 		frames: 5,
+		speed: 3,
 		img: loadImage('/Biker/Biker_attack1.png')
 	},
 	run_attack: {
@@ -36,11 +40,11 @@ export class Player {
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
-	speed = 8
+	speed = 6
 	image = sprites.idle.img
 	maxFrame = sprites.idle.frames
 	frame = 0
-	ticksPerFrame = 5
+	ticksPerFrame = sprites.idle.speed || 5
 	ticksCount = 0
 	direction = 'right'
 	isFalling = false
@@ -101,9 +105,11 @@ export class Player {
 		this.#keepWithinCanvas(canvas)
 		this.#checkForVerticalCollisions(platforms)
 
-		if (this.velocity.x != 0) {
-			this.velocity.x > 0 ? this.velocity.x-- : this.velocity.x++ // reset velocity
-		}
+		if (this.velocity.x != 0) this.velocity.x = 0 // reset velocity
+
+		// if (this.velocity.x != 0) {
+		// 	this.velocity.x > 0 ? this.velocity.x-- : this.velocity.x++ // add slide
+		// }
 
 		this.#handleKeys(keys)
 	}
@@ -141,6 +147,7 @@ export class Player {
 
 	#useSprite(animation: string) {
 		this.image = sprites[animation].img
+		this.ticksPerFrame = sprites[animation].speed || 5
 		this.maxFrame = sprites[animation].frames
 		if (this.frame > sprites[animation].frames) this.frame = 0
 	}
