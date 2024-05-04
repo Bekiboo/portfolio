@@ -29,8 +29,8 @@
 
 		<!---------- PROJECTS ---------->
 		<section class="mb-12">
-			<h2 data-colliding class="flex mb-2 text-2xl title">
-				<span class="whitespace-nowrap">Featured Projects</span>
+			<h2 class="flex mb-2 text-2xl title">
+				<span data-colliding class="whitespace-nowrap">Featured Projects</span>
 			</h2>
 			<Projects />
 		</section>
