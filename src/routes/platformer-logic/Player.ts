@@ -1,56 +1,31 @@
+import { effects, effectsStore, player } from '$lib/stores'
+import { Effect } from './Effect'
 import type { Platform } from './Platform'
-import { collision, loadImage } from './utils'
+import { collision, getSprite } from './utils'
 
 const GRAVITY = 0.5
 
-type Sprite = {
-	frames: number
-	speed?: number
-	img: HTMLImageElement
-}
-
-const sprites: { [key: string]: Sprite } = {
-	idle: {
-		frames: 3,
-		speed: 10,
-		img: loadImage('/Biker/Biker_idle.png')
-	},
-	run: {
-		frames: 5,
-		img: loadImage('/Biker/Biker_run.png')
-	},
-	jump: {
-		frames: 3,
-		speed: 10,
-		img: loadImage('/Biker/Biker_jump.png')
-	},
-	punch: {
-		frames: 5,
-		speed: 3,
-		img: loadImage('/Biker/Biker_attack1.png')
-	},
-	run_attack: {
-		frames: 5,
-		img: loadImage('/Biker/Biker_run_attack.png')
-	}
-}
-
 export class Player {
+	character = 'biker'
 	pos: { x: number; y: number }
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
 	speed = 6
-	image = sprites.idle.img
-	maxFrame = sprites.idle.frames
-	frame = 0
-	ticksPerFrame = sprites.idle.speed || 5
+	image!: HTMLImageElement
+	maxFrame: number
+	ticksPerFrame: number
+	frame = 1
 	ticksCount = 0
 	direction = 'right'
 	isFalling = false
 	jumpAvailable = 2
 
 	constructor(pos: { x: number; y: number }) {
+		const sprite = getSprite(this.character, 'idle')
+		this.image = sprite.img
+		this.ticksPerFrame = sprite.speed || 5
+		this.maxFrame = sprite.frames
 		this.pos = pos
 		this.velocity = {
 			x: 0,
@@ -64,7 +39,7 @@ export class Player {
 		if (this.direction === 'right') {
 			ctx.drawImage(
 				this.image,
-				this.frame * this.width,
+				(this.frame - 1) * this.width,
 				8,
 				this.width,
 				this.height,
@@ -84,7 +59,7 @@ export class Player {
 		ctx.scale(-1, 1)
 		ctx.drawImage(
 			this.image,
-			this.frame * this.width,
+			(this.frame - 1) * this.width,
 			8,
 			this.width,
 			this.height,
@@ -121,14 +96,14 @@ export class Player {
 			if (this.frame < this.maxFrame) {
 				this.frame++
 			} else {
-				this.frame = 0
+				this.frame = 1
 			}
 		}
 	}
 
 	#handleKeys(keys: { [key: string]: boolean }) {
 		if ((keys['right'] || keys['left']) && !this.velocity.y && !keys['punch']) {
-			this.#useSprite('run')
+			this.#playerSprite('run')
 		}
 
 		if (keys['left']) {
@@ -141,21 +116,29 @@ export class Player {
 		}
 
 		if (!keys['up'] && !keys['down'] && !keys['left'] && !keys['right'] && !keys['punch']) {
-			this.#useSprite('idle')
+			this.#playerSprite('idle')
 		}
 	}
 
-	#useSprite(animation: string) {
-		this.image = sprites[animation].img
-		this.ticksPerFrame = sprites[animation].speed || 5
-		this.maxFrame = sprites[animation].frames
-		if (this.frame > sprites[animation].frames) this.frame = 0
+	#playerSprite(animation: string) {
+		const sprite = getSprite(this.character, animation)
+		this.image = sprite.img
+		this.ticksPerFrame = sprite.speed || 5
+		this.maxFrame = sprite.frames
+		if (this.frame > this.maxFrame) this.frame = 1
 	}
 
 	jump() {
+		console.log(this.jumpAvailable)
 		if (this.isFalling && !this.jumpAvailable) return
+		if (!this.isFalling) {
+			this.jumpAvailable = 2
+		} else {
+			effectsStore.add(new Effect({ x: this.pos.x - 12, y: this.pos.y }, 'smoke_12'))
+			this.jumpAvailable = 1
+		}
 
-		this.#useSprite('jump')
+		this.#playerSprite('jump')
 		this.velocity.y = -15
 		this.isFalling = true
 		this.jumpAvailable--
@@ -163,9 +146,9 @@ export class Player {
 
 	punch(keys: { [key: string]: boolean }) {
 		if (keys['right'] || keys['left']) {
-			this.#useSprite('run_attack')
+			this.#playerSprite('run_attack')
 		} else {
-			this.#useSprite('punch')
+			this.#playerSprite('punch')
 		}
 	}
 
@@ -212,7 +195,7 @@ export class Player {
 					this.velocity.y = 0 // stop falling
 					this.pos.y = platform.top - this.height - 0.01
 					this.isFalling = false
-					this.jumpAvailable = 2
+					// this.jumpAvailable = 2
 					break
 				}
 
@@ -232,7 +215,7 @@ export class Player {
 			this.velocity.y = 0
 			this.pos.y = canvas.height - this.height
 			this.isFalling = false
-			this.jumpAvailable = 2
+			// this.jumpAvailable = 2
 		}
 
 		// stop from going off the sides

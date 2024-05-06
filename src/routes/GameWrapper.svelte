@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte'
 	import { Platform } from './platformer-logic/Platform'
 	import { Player } from './platformer-logic/Player'
+	import { effects } from '$lib/stores'
+	import type { Effect } from './platformer-logic/Effect'
 
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
@@ -58,8 +60,6 @@
 		}
 	}
 
-	let count = 0
-
 	const animate = () => {
 		canvas.width = canvas.clientWidth
 		canvas.height = canvas.clientHeight
@@ -67,9 +67,6 @@
 		ctx.clearRect(0, 0, canvas.width, canvas.height)
 
 		let collidingElements = document.querySelectorAll('[data-colliding]')
-		if (count < 1) {
-			count++
-		}
 
 		let platforms: Platform[] = []
 
@@ -83,6 +80,10 @@
 
 		player.draw(ctx)
 		player.update(canvas, keys, platforms)
+
+		$effects?.forEach((effect: Effect) => {
+			effect.draw(ctx)
+		})
 
 		requestAnimationFrame(animate)
 	}
