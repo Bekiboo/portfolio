@@ -12,18 +12,12 @@ export const collision = (
 	return true
 }
 
-export function loadImage(src: string) {
-	const image = new Image()
-	image.src = src
-	return image
-}
-
 export function getSprite(category: string, animation: string) {
 	const sprite = sprites[category][animation]
 	return {
 		frames: sprite.frames,
 		speed: sprite.speed || 5,
-		img: loadImage(sprite.src),
+		img: sprite.img,
 		width: sprite.width || 48,
 		height: sprite.height || 80
 	}
