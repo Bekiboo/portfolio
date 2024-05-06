@@ -1,6 +1,3 @@
-import { effect } from '@melt-ui/svelte/internal/helpers'
-
-// Define an interface for the sprite data
 interface SpriteData {
 	[key: string]: {
 		[key: string]: {
@@ -13,7 +10,6 @@ interface SpriteData {
 	}
 }
 
-// Define the actual sprites data
 const sprites: SpriteData = {
 	biker: {
 		idle: { frames: 4, speed: 10, src: '/sprites/Characters/Biker/Idle.png' },
@@ -38,5 +34,4 @@ const sprites: SpriteData = {
 	}
 }
 
-// Export the sprites data
 export default sprites
