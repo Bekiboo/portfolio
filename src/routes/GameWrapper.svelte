@@ -3,7 +3,7 @@
 	import { Platform } from './platformer-logic/Platform'
 	import { Player } from './platformer-logic/Player'
 	import { effects } from '$lib/stores'
-	import type { Effect } from './platformer-logic/Effect'
+	import { Effect } from './platformer-logic/Effect'
 
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
@@ -16,6 +16,11 @@
 		up: false,
 		down: false,
 		punch: false
+	}
+
+	const mouse = {
+		x: 0,
+		y: 0
 	}
 
 	const onKeyDown = (e: KeyboardEvent) => {
@@ -60,6 +65,16 @@
 		}
 	}
 
+	const click = () => {
+		let effect = new Effect({ x: mouse.x, y: mouse.y }, 'spinning_star')
+		effects.update((prev) => [...prev, effect])
+	}
+
+	const mouseMove = (e: MouseEvent) => {
+		mouse.x = e.clientX
+		mouse.y = e.clientY
+	}
+
 	const animate = () => {
 		canvas.width = canvas.clientWidth
 		canvas.height = canvas.clientHeight
@@ -79,7 +94,7 @@
 		}
 
 		player.draw(ctx)
-		player.update(canvas, keys, platforms)
+		player.update(canvas, keys, mouse, platforms)
 
 		$effects?.forEach((effect: Effect) => {
 			effect.draw(ctx)
@@ -106,7 +121,12 @@
 	</div>
 </div>
 
-<svelte:window on:keydown={onKeyDown} on:keyup={onKeyUp} />
+<svelte:window
+	on:keydown={onKeyDown}
+	on:keyup={onKeyUp}
+	on:mousemove={mouseMove}
+	on:click={click}
+/>
 
 <style>
 	.wrapper {
@@ -114,6 +134,7 @@
 		grid-template-columns: 1fr;
 		grid-template-rows: 1fr;
 		min-height: 100vh;
+		user-select: none;
 	}
 	canvas {
 		position: fixed;
