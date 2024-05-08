@@ -91,17 +91,16 @@
 
 			platform.draw(ctx)
 		}
+		$projectiles?.forEach((projectile) => {
+			projectile.draw(ctx)
+			projectile.update()
+		})
 
 		player.draw(ctx)
 		player.update(canvas, keys, mouse, platforms)
 
 		$effects?.forEach((effect: Effect) => {
 			effect.draw(ctx)
-		})
-
-		$projectiles?.forEach((projectile) => {
-			projectile.draw(ctx)
-			projectile.update()
 		})
 
 		requestAnimationFrame(animate)

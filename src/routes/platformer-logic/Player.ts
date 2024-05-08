@@ -167,7 +167,9 @@ export class Player {
 	}
 
 	shoot() {
-		projectilesStore.add(new Projectile({ x: this.pos.x, y: this.pos.y + 52 }, this.angle, 'blue'))
+		projectilesStore.add(
+			new Projectile({ x: this.pos.x + this.width / 2, y: this.pos.y + 40 }, this.angle, 'blue')
+		)
 	}
 
 	#animate() {
