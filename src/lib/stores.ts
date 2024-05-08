@@ -1,5 +1,6 @@
 import { writable, type Writable } from 'svelte/store'
 import type { Effect } from '../routes/platformer-logic/Effect'
+import type { Projectile } from '../routes/platformer-logic/Projectile'
 
 export const effects = writable<Effect[]>([])
 
@@ -11,6 +12,21 @@ export const effectsStore = {
 	delete: (animationToRemove: Effect) =>
 		effects.update((currentEffects) =>
 			currentEffects.filter((effect) => effect !== animationToRemove)
+		)
+}
+
+export const projectiles = writable<Projectile[]>([])
+
+export const projectilesStore = {
+	subscribe: projectiles.subscribe,
+	set: (value: Projectile[]) => projectiles.set(value),
+	update: (updateFn: (currentProjectiles: Projectile[]) => Projectile[]) =>
+		projectiles.update(updateFn),
+	add: (animation: Projectile) =>
+		projectiles.update((currentProjectiles) => [...currentProjectiles, animation]),
+	delete: (animationToRemove: Projectile) =>
+		projectiles.update((currentProjectiles) =>
+			currentProjectiles.filter((projectile) => projectile !== animationToRemove)
 		)
 }
 
