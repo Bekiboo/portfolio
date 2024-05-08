@@ -2,8 +2,8 @@
 	import { onMount } from 'svelte'
 	import { Platform } from './platformer-logic/Platform'
 	import { Player } from './platformer-logic/Player'
-	import { effects } from '$lib/stores'
-	import { Effect } from './platformer-logic/Effect'
+	import { effects, projectiles } from '$lib/stores'
+	import type { Effect } from './platformer-logic/Effect'
 
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
@@ -66,8 +66,7 @@
 	}
 
 	const click = () => {
-		let effect = new Effect({ x: mouse.x, y: mouse.y }, 'spinning_star')
-		effects.update((prev) => [...prev, effect])
+		player.shoot()
 	}
 
 	const mouseMove = (e: MouseEvent) => {
@@ -98,6 +97,11 @@
 
 		$effects?.forEach((effect: Effect) => {
 			effect.draw(ctx)
+		})
+
+		$projectiles?.forEach((projectile) => {
+			projectile.draw(ctx)
+			projectile.update()
 		})
 
 		requestAnimationFrame(animate)

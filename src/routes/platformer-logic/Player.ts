@@ -1,12 +1,13 @@
-import { effects, effectsStore, player } from '$lib/stores'
+import { effectsStore, projectilesStore } from '$lib/stores'
 import { Effect } from './Effect'
+import { Projectile } from './Projectile'
 import type { Platform } from './Platform'
 import { collision, getSprite } from './utils'
 
 const GRAVITY = 0.5
 
 export class Player {
-	character = 'biker'
+	character = 'punk'
 	pos: { x: number; y: number }
 	velocity: { x: number; y: number }
 	height = 80
@@ -18,6 +19,7 @@ export class Player {
 	frame = 1
 	ticksCount = 0
 	direction = 'right'
+	angle = 0
 	isFalling = false
 	jumpAvailable = 2
 
@@ -25,7 +27,7 @@ export class Player {
 		const sprite = getSprite(this.character, 'idle')
 		this.image = sprite.img
 		this.ticksPerFrame = sprite.speed || 5
-		this.maxFrame = sprite.frames
+		this.maxFrame = sprite.frames ?? 0
 		this.pos = pos
 		this.velocity = {
 			x: 0,
@@ -33,45 +35,12 @@ export class Player {
 		}
 	}
 
-	draw(ctx: CanvasRenderingContext2D) {
-		this.#animate()
-
-		if (this.direction === 'right') {
-			ctx.drawImage(
-				this.image,
-				(this.frame - 1) * this.width,
-				8,
-				this.width,
-				this.height,
-				this.pos.x,
-				this.pos.y,
-				this.width * 2,
-				this.height * 2
-			)
-		} else {
-			this.#drawFlipped(ctx)
-		}
-	}
-
-	#drawFlipped(ctx: CanvasRenderingContext2D) {
-		ctx.save()
-		ctx.translate(this.pos.x + this.width, this.pos.y)
-		ctx.scale(-1, 1)
-		ctx.drawImage(
-			this.image,
-			(this.frame - 1) * this.width,
-			8,
-			this.width,
-			this.height,
-			0,
-			0,
-			this.width * 2,
-			this.height * 2
-		)
-		ctx.restore()
-	}
-
-	update(canvas: HTMLCanvasElement, keys: { [key: string]: boolean }, platforms: Platform[]) {
+	update(
+		canvas: HTMLCanvasElement,
+		keys: { [key: string]: boolean },
+		mouse: { x: number; y: number },
+		platforms: Platform[]
+	) {
 		this.pos.x += this.velocity.x // move left/right
 
 		// Order of these methods is important
@@ -87,6 +56,118 @@ export class Player {
 		// }
 
 		this.#handleKeys(keys)
+
+		// function to get angle between two points
+		const baseAngle = Math.atan2(
+			mouse.y - this.pos.y - this.height / 2,
+			mouse.x - this.pos.x - this.width / 2
+		)
+
+		if (
+			(Math.cos(baseAngle) > 0 && this.direction === 'right') ||
+			(Math.cos(baseAngle) < 0 && this.direction === 'left')
+		) {
+			this.angle = baseAngle
+		} else if (
+			(Math.cos(baseAngle) > 0 && this.direction === 'left') ||
+			(Math.cos(baseAngle) < 0 && this.direction === 'right')
+		) {
+			this.angle = Math.PI - baseAngle
+		}
+	}
+
+	draw(ctx: CanvasRenderingContext2D) {
+		this.#drawHand(ctx)
+		this.#drawWeapon(ctx)
+		this.#drawCharacter(ctx)
+	}
+
+	getAngle() {
+		return this.angle
+	}
+
+	#drawCharacter(ctx: CanvasRenderingContext2D) {
+		this.#animate()
+		if (this.direction === 'right') {
+			ctx.drawImage(
+				this.image,
+				(this.frame - 1) * this.width,
+				8,
+				this.width,
+				this.height,
+				this.pos.x,
+				this.pos.y,
+				this.width * 2,
+				this.height * 2
+			)
+		} else {
+			ctx.save()
+			ctx.translate(this.pos.x + this.width, this.pos.y)
+			ctx.scale(-1, 1)
+			ctx.drawImage(
+				this.image,
+				(this.frame - 1) * this.width,
+				8,
+				this.width,
+				this.height,
+				0,
+				0,
+				this.width * 2,
+				this.height * 2
+			)
+			ctx.restore()
+		}
+	}
+
+	#drawWeapon(ctx: CanvasRenderingContext2D) {
+		ctx.save()
+		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
+		if (Math.cos(this.angle) < 0) {
+			ctx.scale(1, -1)
+
+			ctx.rotate(-this.angle)
+		} else {
+			ctx.rotate(this.angle)
+		}
+		ctx.drawImage(
+			getSprite('weapon', 'gun_1').img,
+			0,
+			0,
+			this.width,
+			this.height,
+			14,
+			-4,
+			this.width * 2,
+			this.height * 2
+		)
+		ctx.restore()
+	}
+
+	#drawHand(ctx: CanvasRenderingContext2D) {
+		ctx.save()
+		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
+		if (Math.cos(this.angle) < 0) {
+			ctx.scale(1, -1)
+			ctx.rotate(-this.angle)
+		} else {
+			ctx.rotate(this.angle)
+		}
+		ctx.drawImage(
+			getSprite('hand', `${this.character}_3`).img,
+			0,
+			0,
+			this.width,
+			this.height,
+			-28,
+			-28,
+			this.width * 2,
+			this.height * 2
+		)
+		ctx.restore()
+	}
+
+	shoot() {
+		projectilesStore.add(new Projectile({ x: this.pos.x, y: this.pos.y + 52 }, this.angle, 'blue'))
 	}
 
 	#animate() {
@@ -99,6 +180,14 @@ export class Player {
 				this.frame = 1
 			}
 		}
+	}
+
+	#playerSprite(animation: string) {
+		const sprite = getSprite(this.character, animation)
+		this.image = sprite.img
+		this.ticksPerFrame = sprite.speed || 5
+		this.maxFrame = sprite.frames ?? 0
+		if (this.frame > this.maxFrame) this.frame = 1
 	}
 
 	#handleKeys(keys: { [key: string]: boolean }) {
@@ -120,24 +209,18 @@ export class Player {
 		}
 	}
 
-	#playerSprite(animation: string) {
-		const sprite = getSprite(this.character, animation)
-		this.image = sprite.img
-		this.ticksPerFrame = sprite.speed || 5
-		this.maxFrame = sprite.frames
-		if (this.frame > this.maxFrame) this.frame = 1
-	}
-
 	jump() {
-		console.log(this.jumpAvailable)
 		if (this.isFalling && !this.jumpAvailable) return
 		if (!this.isFalling) {
 			this.jumpAvailable = 2
 		} else {
-			effectsStore.add(new Effect({ x: this.pos.x - 12, y: this.pos.y }, 'smoke_12'))
 			this.jumpAvailable = 1
+			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 48 }, 'smoke_12'))
 		}
 
+		if (this.velocity.y > 1) {
+			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 48 }, 'smoke_12'))
+		}
 		this.#playerSprite('jump')
 		this.velocity.y = -15
 		this.isFalling = true
@@ -148,7 +231,7 @@ export class Player {
 		if (keys['right'] || keys['left']) {
 			this.#playerSprite('run_attack')
 		} else {
-			this.#playerSprite('punch')
+			Math.random() > 0.5 ? this.#playerSprite('punch') : this.#playerSprite('punch_2')
 		}
 	}
 

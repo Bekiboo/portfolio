@@ -1,5 +1,5 @@
 import { getSprite } from './utils'
-import { effects, effectsStore } from '$lib/stores'
+import { effectsStore } from '$lib/stores'
 
 export class Effect {
 	pos: { x: number; y: number }
@@ -17,8 +17,8 @@ export class Effect {
 		this.pos = pos
 		this.image = getSprite('effect', animation).img
 		this.ticksPerFrame = getSprite('effect', animation).speed || 5
-		this.maxFrame = getSprite('effect', animation).frames
-		this.height = getSprite('effect', animation).height || 80
+		this.maxFrame = getSprite('effect', animation).frames || 0
+		this.height = getSprite('effect', animation).height || 96
 		this.width = getSprite('effect', animation).width || 48
 		this.speed = 6
 		if (this.frame > this.maxFrame) {
@@ -31,11 +31,11 @@ export class Effect {
 		ctx.drawImage(
 			this.image,
 			this.frame * this.width,
-			8,
+			0,
 			this.width,
 			this.height,
-			this.pos.x,
-			this.pos.y,
+			this.pos.x - this.width / 2,
+			this.pos.y - this.height / 2,
 			this.width * 2,
 			this.height * 2
 		)
