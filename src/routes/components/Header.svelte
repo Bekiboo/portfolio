@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { IconBrandGithub, IconBrandLinkedin, IconMail } from '@tabler/icons-svelte'
 
+	const email = 'julien.connault@gmail.com'
+
 	const copyEmail = () => {
-		const email = 'julien.connault@gmail.com'
 		navigator.clipboard.writeText(email)
 		alert(`Copied ${email} to clipboard`)
 	}
@@ -50,17 +51,13 @@
 		</a>
 	</li>
 	<li class="mr-5">
-		<a
-			class="block hover:text-blue-400"
-			href="mailto:julien.connault@gmail.com"
-			target="_blank"
-			rel="noreferrer"
+		<a class="block hover:text-blue-400" href="mailto:{email}" target="_blank" rel="noreferrer"
 			><span class="sr-only">LinkedIn</span>
 			<IconMail size={36} stroke={1} color={'currentColor'} />
 		</a>
 	</li>
 </ul>
-<span class="mt-2 font-thin">Email: julien.connault@gmail.com</span>
+<span class="mt-2 font-thin">Email: {email}</span>
 
 <style>
 	button {
