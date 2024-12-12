@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tooltip } from '$lib/tooltip/tooltip'
+	import { tooltip } from '$lib/tooltip/tooltipAction.svelte'
 	import {
 		IconBrandSvelte,
 		IconBrandJavascript,
