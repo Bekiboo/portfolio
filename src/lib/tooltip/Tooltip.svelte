@@ -1,12 +1,12 @@
 <script lang="ts">
 	interface Props {
-		message: string;
-		x: number;
-		y: number;
+		message: string
+		x: number
+		y: number
 	}
 
-	let { message, x, y }: Props = $props();
-	let tooltipWidth: number = $state()
+	let { message, x, y }: Props = $props()
+	let tooltipWidth: number = $state(0)
 </script>
 
 <div
