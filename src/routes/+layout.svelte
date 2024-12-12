@@ -1,17 +1,19 @@
 <script>
 	import '../app.css'
 	import GameWrapper from './GameWrapper.svelte'
+	/** @type {{children?: import('svelte').Snippet}} */
+	let { children } = $props();
 
-	let windowWidth = 0
+	let windowWidth = $state(0)
 </script>
 
 <div class="text-slate-200 bg-slate-800">
 	{#if windowWidth > 1024}
 		<GameWrapper>
-			<slot />
+			{@render children?.()}
 		</GameWrapper>
 	{:else}
-		<slot />
+		{@render children?.()}
 	{/if}
 </div>
 

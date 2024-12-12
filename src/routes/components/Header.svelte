@@ -25,7 +25,7 @@
 	interactive design.
 </p>
 
-<button data-colliding class="w-48 h-12 px-4 py-2 font-medium uppercase" on:click={copyEmail}
+<button data-colliding class="w-48 h-12 px-4 py-2 font-medium uppercase" onclick={copyEmail}
 	>Copy Email</button
 >
 

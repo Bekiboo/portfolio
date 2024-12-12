@@ -4,6 +4,11 @@
 	import { Player } from './platformer-logic/Player'
 	import { effects, projectiles } from '$lib/stores'
 	import type { Effect } from './platformer-logic/Effect'
+	interface Props {
+		children?: import('svelte').Snippet;
+	}
+
+	let { children }: Props = $props();
 
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
@@ -117,18 +122,18 @@
 </script>
 
 <div class="wrapper">
-	<canvas class="z-10" />
+	<canvas class="z-10"></canvas>
 
 	<div class="content">
-		<slot />
+		{@render children?.()}
 	</div>
 </div>
 
 <svelte:window
-	on:keydown={onKeyDown}
-	on:keyup={onKeyUp}
-	on:mousemove={mouseMove}
-	on:click={click}
+	onkeydown={onKeyDown}
+	onkeyup={onKeyUp}
+	onmousemove={mouseMove}
+	onclick={click}
 />
 
 <style>

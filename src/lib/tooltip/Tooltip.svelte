@@ -1,8 +1,12 @@
 <script lang="ts">
-	export let message: string
-	export let x: number
-	export let y: number
-	let tooltipWidth: number
+	interface Props {
+		message: string;
+		x: number;
+		y: number;
+	}
+
+	let { message, x, y }: Props = $props();
+	let tooltipWidth: number = $state()
 </script>
 
 <div

@@ -75,6 +75,7 @@
 			<h3>{level}</h3>
 			<ul class="flex flex-wrap">
 				{#each technos as { name, comp, color }}
+					{@const SvelteComponent = comp}
 					<li
 						data-tooltip={name}
 						use:tooltip
@@ -83,7 +84,7 @@
 						style:--techno-color={color}
 					>
 						<div class="pointer-events-none">
-							<svelte:component this={comp} size={64} stroke={1} color={'currentColor'} />
+							<SvelteComponent size={64} stroke={1} color={'currentColor'} />
 						</div>
 					</li>
 				{/each}

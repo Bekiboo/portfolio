@@ -29,8 +29,8 @@
 		}
 	]
 
-	let logoHovered = false
-	let gitHovered = false
+	let logoHovered = $state(false)
+	let gitHovered = $state(false)
 
 	const enterLogo = () => (logoHovered = true)
 	const leaveLogo = () => (logoHovered = false)
@@ -47,8 +47,8 @@
 					class="w-full text-blue-500"
 					{src}
 					alt="{title} Logo"
-					on:mouseenter={enterLogo}
-					on:mouseleave={leaveLogo}
+					onmouseenter={enterLogo}
+					onmouseleave={leaveLogo}
 				/></a
 			>
 			<div class="col-span-10">
@@ -67,8 +67,8 @@
 						target="_blank"
 						href={gitUrl}
 						aria-label="GitHub Repository"
-						on:mouseenter={enterGit}
-						on:mouseleave={leaveGit}
+						onmouseenter={enterGit}
+						onmouseleave={leaveGit}
 						class="flex group items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 hover:bg-blue-700 text-slate-300"
 					>
 						{#if gitHovered}
