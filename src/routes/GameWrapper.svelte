@@ -30,8 +30,9 @@
 	}
 
 	let lastTime = performance.now() // Initial timestamp for delta time calculation
+	let shootingInterval: number | null = null
 
-	const onKeyDown = (e: KeyboardEvent) => {
+	const onkeydown = (e: KeyboardEvent) => {
 		switch (e.code) {
 			case 'KeyA':
 				keys.left = true
@@ -53,7 +54,7 @@
 		}
 	}
 
-	const onKeyUp = (e: KeyboardEvent) => {
+	const onkeyup = (e: KeyboardEvent) => {
 		switch (e.code) {
 			case 'KeyA':
 				keys.left = false
@@ -73,11 +74,24 @@
 		}
 	}
 
-	const click = () => {
+	const startShooting = () => {
 		player.shoot()
+		if (shootingInterval === null) {
+			// Prevent multiple intervals
+			shootingInterval = window.setInterval(() => {
+				player.shoot()
+			}, 100) // Adjust the interval time as needed (200ms = 5 shots/sec)
+		}
 	}
 
-	const mouseMove = (e: MouseEvent) => {
+	const stopShooting = () => {
+		if (shootingInterval !== null) {
+			window.clearInterval(shootingInterval)
+			shootingInterval = null // Reset interval ID
+		}
+	}
+
+	const onmousemove = (e: MouseEvent) => {
 		mouse.x = e.clientX
 		mouse.y = e.clientY
 	}
@@ -108,7 +122,7 @@
 		})
 
 		player.update(canvas, keys, mouse, platforms, deltaTime)
-		player.draw(ctx)
+		player.draw(ctx, deltaTime)
 
 		$effects?.forEach((effect: Effect) => {
 			effect.draw(ctx)
@@ -136,11 +150,11 @@
 </div>
 
 <svelte:window
-	onkeydown={onKeyDown}
-	onkeyup={onKeyUp}
-	onmousemove={mouseMove}
-	onclick={click}
-	onmousedown={click}
+	{onkeydown}
+	{onkeyup}
+	{onmousemove}
+	onmousedown={startShooting}
+	onmouseup={stopShooting}
 />
 
 <style>

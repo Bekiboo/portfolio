@@ -22,6 +22,7 @@ export class Player {
 	angle = 0
 	isFalling = false
 	jumpAvailable = 2
+	status = 'idle'
 
 	constructor(pos: { x: number; y: number }) {
 		const sprite = getSprite(this.character, 'idle')
@@ -79,18 +80,18 @@ export class Player {
 		// }
 	}
 
-	draw(ctx: CanvasRenderingContext2D) {
+	draw(ctx: CanvasRenderingContext2D, deltaTime: number) {
 		this.#drawHand(ctx)
 		this.#drawWeapon(ctx)
-		this.#drawCharacter(ctx)
+		this.#drawCharacter(ctx, deltaTime)
 	}
 
 	getAngle() {
 		return this.angle
 	}
 
-	#drawCharacter(ctx: CanvasRenderingContext2D) {
-		this.#animate()
+	#drawCharacter(ctx: CanvasRenderingContext2D, deltaTime: number) {
+		this.#animate(deltaTime)
 		if (this.direction === 'right') {
 			ctx.drawImage(
 				this.image,
@@ -125,13 +126,10 @@ export class Player {
 	#drawWeapon(ctx: CanvasRenderingContext2D) {
 		ctx.save()
 		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
-		if (Math.cos(this.angle) < 0) {
-			ctx.scale(1, -1)
+		// if the player is facing left, flip the weapon
+		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
+		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
 
-			ctx.rotate(-this.angle)
-		} else {
-			ctx.rotate(this.angle)
-		}
 		ctx.drawImage(
 			getSprite('weapon', 'gun_1').img,
 			0,
@@ -149,12 +147,10 @@ export class Player {
 	#drawHand(ctx: CanvasRenderingContext2D) {
 		ctx.save()
 		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
-		// if (Math.cos(this.angle) < 0) {
-		// 	ctx.scale(1, -1)
-		// 	ctx.rotate(-this.angle)
-		// } else {
-		ctx.rotate(this.angle)
-		// }
+		// if the player is facing left, flip the hand
+		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
+		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
+
 		ctx.drawImage(
 			getSprite('hand', `${this.character}_3`).img,
 			0,
@@ -175,8 +171,8 @@ export class Player {
 		)
 	}
 
-	#animate() {
-		this.ticksCount++
+	#animate(deltaTime: number) {
+		this.ticksCount += deltaTime
 		if (this.ticksCount > this.ticksPerFrame) {
 			this.ticksCount = 0
 			if (this.frame < this.maxFrame) {

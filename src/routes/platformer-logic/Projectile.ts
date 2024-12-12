@@ -21,7 +21,7 @@ export class Projectile {
 		this.maxFrame = getSprite('projectile', sprite).frames || 0
 		this.height = getSprite('projectile', sprite).height || 80
 		this.width = getSprite('projectile', sprite).width || 48
-		this.speed = 12
+		this.speed = 16
 		this.angle = angle
 		if (this.frame > this.maxFrame) {
 			this.frame = 0
