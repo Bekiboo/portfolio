@@ -4,11 +4,12 @@
 	import { Player } from './platformer-logic/Player'
 	import { effects, projectiles } from '$lib/stores'
 	import type { Effect } from './platformer-logic/Effect'
+
 	interface Props {
-		children?: import('svelte').Snippet;
+		children?: import('svelte').Snippet
 	}
 
-	let { children }: Props = $props();
+	let { children }: Props = $props()
 
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
@@ -27,6 +28,8 @@
 		x: 0,
 		y: 0
 	}
+
+	let lastTime = performance.now() // Initial timestamp for delta time calculation
 
 	const onKeyDown = (e: KeyboardEvent) => {
 		switch (e.code) {
@@ -79,14 +82,16 @@
 		mouse.y = e.clientY
 	}
 
-	const animate = () => {
+	const animate = (timestamp = performance.now()) => {
+		const deltaTime = (timestamp - lastTime) / 12 // Time elapsed since last frame in seconds
+		lastTime = timestamp // Update lastTime for the next frame
+
 		canvas.width = canvas.clientWidth
 		canvas.height = canvas.clientHeight
 
 		ctx.clearRect(0, 0, canvas.width, canvas.height)
 
 		let collidingElements = document.querySelectorAll('[data-colliding]')
-
 		let platforms: Platform[] = []
 
 		for (let i = 0; i < collidingElements.length; i++) {
@@ -96,13 +101,14 @@
 
 			platform.draw(ctx)
 		}
+
 		$projectiles?.forEach((projectile) => {
+			projectile.update(deltaTime)
 			projectile.draw(ctx)
-			projectile.update()
 		})
 
+		player.update(canvas, keys, mouse, platforms, deltaTime)
 		player.draw(ctx)
-		player.update(canvas, keys, mouse, platforms)
 
 		$effects?.forEach((effect: Effect) => {
 			effect.draw(ctx)
@@ -117,7 +123,7 @@
 		canvas = document.querySelector('canvas') as HTMLCanvasElement
 		ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 
-		animate()
+		animate() // Start the animation loop
 	})
 </script>
 
@@ -134,6 +140,7 @@
 	onkeyup={onKeyUp}
 	onmousemove={mouseMove}
 	onclick={click}
+	onmousedown={click}
 />
 
 <style>

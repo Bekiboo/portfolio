@@ -39,13 +39,14 @@ export class Player {
 		canvas: HTMLCanvasElement,
 		keys: { [key: string]: boolean },
 		mouse: { x: number; y: number },
-		platforms: Platform[]
+		platforms: Platform[],
+		deltaTime: number
 	) {
-		this.pos.x += this.velocity.x // move left/right
+		this.pos.x += this.velocity.x * deltaTime // move left/right
 
 		// Order of these methods is important
 		this.#checkForHorizontalCollisions(platforms)
-		this.#applyGravity()
+		this.#applyGravity(deltaTime)
 		this.#keepWithinCanvas(canvas)
 		this.#checkForVerticalCollisions(platforms)
 
@@ -63,17 +64,19 @@ export class Player {
 			mouse.x - this.pos.x - this.width / 2
 		)
 
-		if (
-			(Math.cos(baseAngle) > 0 && this.direction === 'right') ||
-			(Math.cos(baseAngle) < 0 && this.direction === 'left')
-		) {
-			this.angle = baseAngle
-		} else if (
-			(Math.cos(baseAngle) > 0 && this.direction === 'left') ||
-			(Math.cos(baseAngle) < 0 && this.direction === 'right')
-		) {
-			this.angle = Math.PI - baseAngle
-		}
+		this.angle = baseAngle
+
+		// if (
+		// 	(Math.cos(baseAngle) > 0 && this.direction === 'right') ||
+		// 	(Math.cos(baseAngle) < 0 && this.direction === 'left')
+		// ) {
+		// 	this.angle = baseAngle
+		// } else if (
+		// 	(Math.cos(baseAngle) > 0 && this.direction === 'left') ||
+		// 	(Math.cos(baseAngle) < 0 && this.direction === 'right')
+		// ) {
+		// 	this.angle = Math.PI - baseAngle
+		// }
 	}
 
 	draw(ctx: CanvasRenderingContext2D) {
@@ -146,12 +149,12 @@ export class Player {
 	#drawHand(ctx: CanvasRenderingContext2D) {
 		ctx.save()
 		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
-		if (Math.cos(this.angle) < 0) {
-			ctx.scale(1, -1)
-			ctx.rotate(-this.angle)
-		} else {
-			ctx.rotate(this.angle)
-		}
+		// if (Math.cos(this.angle) < 0) {
+		// 	ctx.scale(1, -1)
+		// 	ctx.rotate(-this.angle)
+		// } else {
+		ctx.rotate(this.angle)
+		// }
 		ctx.drawImage(
 			getSprite('hand', `${this.character}_3`).img,
 			0,
@@ -237,8 +240,8 @@ export class Player {
 		}
 	}
 
-	#applyGravity() {
-		this.pos.y += this.velocity.y
+	#applyGravity(deltaTime: number) {
+		this.pos.y += this.velocity.y * deltaTime
 		this.velocity.y += GRAVITY
 	}
 

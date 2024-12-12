@@ -21,16 +21,16 @@ export class Projectile {
 		this.maxFrame = getSprite('projectile', sprite).frames || 0
 		this.height = getSprite('projectile', sprite).height || 80
 		this.width = getSprite('projectile', sprite).width || 48
-		this.speed = 48
+		this.speed = 12
 		this.angle = angle
 		if (this.frame > this.maxFrame) {
 			this.frame = 0
 		}
 	}
 
-	update() {
-		this.pos.x += Math.cos(this.angle) * this.speed
-		this.pos.y += Math.sin(this.angle) * this.speed
+	update(deltaTime: number) {
+		this.pos.x += Math.cos(this.angle) * this.speed * deltaTime
+		this.pos.y += Math.sin(this.angle) * this.speed * deltaTime
 		this.ticksCount++
 
 		if (this.ticksCount > 240) {
