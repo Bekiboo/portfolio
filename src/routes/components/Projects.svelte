@@ -12,30 +12,25 @@
 			tags: ['Svelte', 'Tailwind', 'Supabase']
 		},
 		{
-			title: 'Mulligan',
-			href: 'https://mulligan.vercel.app/',
-			src: 'image/logo-mulligan.svg',
-			desc: 'A prototype Virtual Table Top app. In its current state it allows players to share a board and move tokens around in realtime.',
-			gitUrl: 'https://github.com/Bekiboo/mulligan',
-			tags: ['Svelte', 'Tailwind', 'Supabase']
-		},
-		{
 			title: 'Sandbox',
 			href: 'https://bekiboo-sandbox.vercel.app/',
 			src: 'image/logo-sandbox.svg',
 			desc: 'A collection of small projects and experiments. This website is always evolving and might be prone to bugs.',
 			gitUrl: 'https://github.com/Bekiboo/sandbox',
 			tags: ['Svelte', 'Tailwind', 'Daisy UI', 'Threlte', 'Konva']
+		},
+		{
+			title: 'Mulligan',
+			href: 'https://mulligan.vercel.app/',
+			src: 'image/logo-mulligan.svg',
+			desc: 'A prototype Virtual Table Top app. In its current state it allows players to share a board and move tokens around in realtime.',
+			gitUrl: 'https://github.com/Bekiboo/mulligan',
+			tags: ['Svelte', 'Tailwind', 'Supabase']
 		}
 	]
 
 	let logoHovered = $state(false)
 	let gitHovered = $state(false)
-
-	const enterLogo = () => (logoHovered = true)
-	const leaveLogo = () => (logoHovered = false)
-	const enterGit = () => (gitHovered = true)
-	const leaveGit = () => (gitHovered = false)
 </script>
 
 <div class="flex flex-col gap-8">
@@ -47,8 +42,8 @@
 					class="w-full text-blue-500"
 					{src}
 					alt="{title} Logo"
-					onmouseenter={enterLogo}
-					onmouseleave={leaveLogo}
+					onmouseenter={() => (logoHovered = true)}
+					onmouseleave={() => (logoHovered = false)}
 				/></a
 			>
 			<div class="col-span-10">
@@ -67,9 +62,9 @@
 						target="_blank"
 						href={gitUrl}
 						aria-label="GitHub Repository"
-						onmouseenter={enterGit}
-						onmouseleave={leaveGit}
-						class="flex group items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 hover:bg-blue-700 text-slate-300"
+						onmouseenter={() => (gitHovered = true)}
+						onmouseleave={() => (gitHovered = false)}
+						class="flex items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 group hover:bg-blue-700 text-slate-300"
 					>
 						{#if gitHovered}
 							<span

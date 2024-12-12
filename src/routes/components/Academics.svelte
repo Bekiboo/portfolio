@@ -15,6 +15,6 @@
 	<li>Certificate of Web Development – <span class="text-slate-400">2021</span></li>
 	<li>Certificate of Computer Programming – <span class="text-slate-400">2022</span></li>
 	<li>
-		Certificate of Business Analysis – <span class="text-slate-400">In Progress</span>
+		Certificate of Business Analysis – <span class="text-slate-400">2023</span>
 	</li>
 </ul>
