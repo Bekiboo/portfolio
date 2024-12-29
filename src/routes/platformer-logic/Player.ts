@@ -53,10 +53,6 @@ export class Player {
 
 		if (this.velocity.x != 0) this.velocity.x = 0 // reset velocity
 
-		// if (this.velocity.x != 0) {
-		// 	this.velocity.x > 0 ? this.velocity.x-- : this.velocity.x++ // add slide
-		// }
-
 		this.#handleKeys(keys)
 
 		// function to get angle between two points
@@ -66,28 +62,12 @@ export class Player {
 		)
 
 		this.angle = baseAngle
-
-		// if (
-		// 	(Math.cos(baseAngle) > 0 && this.direction === 'right') ||
-		// 	(Math.cos(baseAngle) < 0 && this.direction === 'left')
-		// ) {
-		// 	this.angle = baseAngle
-		// } else if (
-		// 	(Math.cos(baseAngle) > 0 && this.direction === 'left') ||
-		// 	(Math.cos(baseAngle) < 0 && this.direction === 'right')
-		// ) {
-		// 	this.angle = Math.PI - baseAngle
-		// }
 	}
 
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number) {
 		this.#drawHand(ctx)
 		this.#drawWeapon(ctx)
 		this.#drawCharacter(ctx, deltaTime)
-	}
-
-	getAngle() {
-		return this.angle
 	}
 
 	#drawCharacter(ctx: CanvasRenderingContext2D, deltaTime: number) {
