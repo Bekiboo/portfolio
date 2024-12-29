@@ -4,6 +4,7 @@
 	import { Player } from './platformer-logic/Player'
 	import { effects, projectiles } from '$lib/stores'
 	import type { Effect } from './platformer-logic/Effect'
+	import { keys } from './platformer-logic/controller'
 
 	interface Props {
 		children?: import('svelte').Snippet
@@ -16,14 +17,6 @@
 
 	let player: Player
 
-	const keys = {
-		left: false,
-		right: false,
-		up: false,
-		down: false,
-		punch: false
-	}
-
 	const mouse = {
 		x: 0,
 		y: 0
@@ -31,48 +24,6 @@
 
 	let lastTime = performance.now() // Initial timestamp for delta time calculation
 	let shootingInterval: number | null = null
-
-	const onkeydown = (e: KeyboardEvent) => {
-		switch (e.code) {
-			case 'KeyA':
-				keys.left = true
-				break
-			case 'KeyD':
-				keys.right = true
-				break
-			case 'KeyW':
-				keys.up = true
-				player.jump()
-				break
-			case 'KeyS':
-				keys.down = true
-				break
-			case 'KeyK':
-				keys.punch = true
-				player.punch(keys)
-				break
-		}
-	}
-
-	const onkeyup = (e: KeyboardEvent) => {
-		switch (e.code) {
-			case 'KeyA':
-				keys.left = false
-				break
-			case 'KeyD':
-				keys.right = false
-				break
-			case 'KeyW':
-				keys.up = false
-				break
-			case 'KeyS':
-				keys.down = false
-				break
-			case 'KeyK':
-				keys.punch = false
-				break
-		}
-	}
 
 	const startShooting = () => {
 		player.shoot()
@@ -150,8 +101,8 @@
 </div>
 
 <svelte:window
-	{onkeydown}
-	{onkeyup}
+	onkeydown={(e) => keys.onkeydown(e, player)}
+	onkeyup={(e) => keys.onkeyup(e, player)}
 	{onmousemove}
 	onmousedown={startShooting}
 	onmouseup={stopShooting}
