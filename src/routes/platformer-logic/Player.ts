@@ -4,7 +4,7 @@ import { Projectile } from './Projectile'
 import type { Platform } from './Platform'
 import { collision, getSprite } from './utils'
 
-const GRAVITY = 0.5
+const GRAVITY = 0.33
 
 export class Player {
 	character = 'punk'
@@ -12,7 +12,7 @@ export class Player {
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
-	speed = 6
+	speed = 5
 	image!: HTMLImageElement
 	maxFrame: number
 	ticksPerFrame: number
@@ -45,11 +45,11 @@ export class Player {
 	) {
 		this.pos.x += this.velocity.x * deltaTime // move left/right
 
-		// Order of these methods is important
-		this.#checkForHorizontalCollisions(platforms)
-		this.#applyGravity(deltaTime)
-		this.#keepWithinCanvas(canvas)
-		this.#checkForVerticalCollisions(platforms)
+		// Order of these methods is VERY important
+		this.#checkForHorizontalCollisions(platforms) // first
+		this.#applyGravity(deltaTime) // second
+		this.#checkForVerticalCollisions(platforms) // third
+		this.#keepWithinCanvas(canvas) // last
 
 		if (this.velocity.x != 0) this.velocity.x = 0 // reset velocity
 
@@ -203,7 +203,7 @@ export class Player {
 			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 48 }, 'smoke_12'))
 		}
 		this.#playerSprite('jump')
-		this.velocity.y = -15
+		this.velocity.y = -12
 		this.isFalling = true
 		this.jumpAvailable--
 	}
@@ -232,14 +232,14 @@ export class Player {
 				if (this.velocity.x > 0) {
 					// hit right
 					this.velocity.x = 0
-					this.pos.x = platform.left - this.width - 0.01
+					this.pos.x = platform.left - this.width
 					break
 				}
 
 				if (this.velocity.x < 0) {
 					// hit left
 					this.velocity.x = 0
-					this.pos.x = platform.left + platform.width + 0.01
+					this.pos.x = platform.left + platform.width
 					break
 				}
 			}
@@ -257,7 +257,7 @@ export class Player {
 				if (this.velocity.y > 0) {
 					// hit floor
 					this.velocity.y = 0 // stop falling
-					this.pos.y = platform.top - this.height - 0.01
+					this.pos.y = platform.top - this.height
 					this.isFalling = false
 					// this.jumpAvailable = 2
 					break
@@ -266,12 +266,14 @@ export class Player {
 				if (this.velocity.y < 0) {
 					// hit head
 					this.velocity.y *= -0.6 // bounce
-					this.pos.y = platform.top + platform.height + 0.01
+					this.pos.y = platform.top + platform.height
 					break
 				}
 			}
 		}
 	}
+
+	#teleportToNearestAvailableSpace(platforms: Platform[]) {}
 
 	#keepWithinCanvas(canvas: HTMLCanvasElement) {
 		// stop from going below canvas
