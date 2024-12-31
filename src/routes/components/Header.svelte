@@ -6,7 +6,7 @@
 
 	const copyEmail = () => {
 		navigator.clipboard.writeText(email)
-		alert(`Copied ${email} to clipboard`)
+		// alert(`Copied ${email} to clipboard`)
 	}
 </script>
 
