@@ -146,8 +146,19 @@ export class Player {
 	}
 
 	shoot() {
+		const weaponLength = 60 // Distance from the center of the character to the weapon's end
+		const offsetX = Math.cos(this.angle) * weaponLength
+		const offsetY = Math.sin(this.angle) * weaponLength
+
 		projectilesStore.add(
-			new Projectile({ x: this.pos.x + this.width / 2, y: this.pos.y + 40 }, this.angle, 'blue')
+			new Projectile(
+				{
+					x: this.pos.x + this.width / 2 + offsetX,
+					y: this.pos.y + this.height / 2 + offsetY
+				},
+				this.angle,
+				'blue'
+			)
 		)
 	}
 
