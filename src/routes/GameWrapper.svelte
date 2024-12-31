@@ -31,7 +31,7 @@
 			// Prevent multiple intervals
 			shootingInterval = window.setInterval(() => {
 				player.shoot()
-			}, 100) // Adjust the interval time as needed (200ms = 5 shots/sec)
+			}, 200) // Adjust the interval time as needed (200ms = 5 shots/sec)
 		}
 	}
 
@@ -68,7 +68,7 @@
 		}
 
 		$projectiles?.forEach((projectile) => {
-			projectile.update(deltaTime)
+			projectile.update(deltaTime, platforms)
 			projectile.draw(ctx)
 		})
 

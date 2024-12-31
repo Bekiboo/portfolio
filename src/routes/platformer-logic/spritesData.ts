@@ -85,7 +85,7 @@ const sprites: SpriteData = {
 		punk_3: { img: loadImage('/sprites/Hands/Punk/3.png') }
 	},
 	projectile: {
-		blue: { img: loadImage('/sprites/Bullets/5.png') }
+		blue: { img: loadImage('/sprites/Bullets/5.png'), width: 30, height: 4 }
 	}
 }
 
