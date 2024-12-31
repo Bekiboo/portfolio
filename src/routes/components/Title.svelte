@@ -51,7 +51,6 @@
 		position: relative;
 		word-spacing: 3px;
 		letter-spacing: 0.4px;
-		cursor: pointer;
 		transition: 0.3s;
 		line-height: initial;
 		min-height: 30px;
@@ -63,7 +62,7 @@
 		outline: 0;
 		padding: 1rem 2rem;
 		background-color: transparent;
-		margin-bottom: 0.5rem;
+		margin-bottom: 1rem;
 	}
 
 	.box {
