@@ -229,15 +229,29 @@ export class Player {
 					platform
 				)
 			) {
+				const playerBottom = this.pos.y + this.height
+				const platformTop = platform.top
+				const overlapThreshold = 20 // Allowable overlap to consider a bottom collision
+
+				// Check if the collision happens near the bottom of the player's hitbox
+				if (playerBottom > platformTop && playerBottom - platformTop <= overlapThreshold) {
+					// Bump the player up
+					this.velocity.y = 0
+					this.pos.y = platformTop - this.height
+					this.isFalling = false // Optional: Set falling state if applicable
+					break
+				}
+
+				// Handle horizontal collision
 				if (this.velocity.x > 0) {
-					// hit right
+					// Hit right
 					this.velocity.x = 0
 					this.pos.x = platform.left - this.width
 					break
 				}
 
 				if (this.velocity.x < 0) {
-					// hit left
+					// Hit left
 					this.velocity.x = 0
 					this.pos.x = platform.left + platform.width
 					break
@@ -272,8 +286,6 @@ export class Player {
 			}
 		}
 	}
-
-	#teleportToNearestAvailableSpace(platforms: Platform[]) {}
 
 	#keepWithinCanvas(canvas: HTMLCanvasElement) {
 		// stop from going below canvas

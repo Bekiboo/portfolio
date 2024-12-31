@@ -1,5 +1,3 @@
-import type { projectiles } from '$lib/stores'
-
 interface SpriteData {
 	[key: string]: {
 		[key: string]: {
