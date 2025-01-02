@@ -6,7 +6,7 @@
 	import Title from './components/Title.svelte'
 </script>
 
-<div class="grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto -z-10 lg:grid-cols-2 md:px-24">
+<div class="z-10 grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto lg:grid-cols-2 md:px-24">
 	<!---------- HEADER ---------->
 	<header
 		class="mb-16 lg:col-start-1 lg:fixed lg:top-0 lg:max-h-screen lg:justify-between lg:py-24"
