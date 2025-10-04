@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
 	--space-cadet: #24295cff;
@@ -35,18 +33,15 @@
 --azure-web: hsla(185, 58%, 93%, 1);
 --white: hsla(195, 50%, 98%, 1); */
 
-@layer base {
-	@font-face {
-		font-family: 'Bauhaus';
-		src: local('Bauhaus'), local('bauhaus'), url('/fonts/bauhaus/Bauhaus-93-Regular.ttf');
-		font-weight: normal;
-		font-display: swap;
-	}
-	,
-	@font-face {
-		font-family: 'Bauhaus';
-		src: local('Bauhaus Bold'), local('Bauhaus-Bold'), url('/fonts/bauhaus/BauhausBold.ttf');
-		font-weight: bold;
-		font-display: swap;
-	}
+@font-face {
+	font-family: 'Bauhaus';
+	src: local('Bauhaus'), local('bauhaus'), url('/fonts/bauhaus/Bauhaus-93-Regular.ttf');
+	font-weight: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Bauhaus';
+	src: local('Bauhaus Bold'), local('Bauhaus-Bold'), url('/fonts/bauhaus/BauhausBold.ttf');
+	font-weight: bold;
+	font-display: swap;
 }
