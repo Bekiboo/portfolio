@@ -19,7 +19,8 @@
 		IconBrandVite,
 		IconBrandGraphql,
 		IconBrandPrisma,
-		IconBrandStripe
+		IconBrandStripe,
+		IconBrandNextjs,
 	} from '@tabler/icons-svelte'
 
 	const skills = [
@@ -51,8 +52,9 @@
 				{ name: 'SQL', comp: IconSql, color: '#f29111' },
 				{ name: 'Angular', comp: IconBrandAngular, color: '#dd0031' },
 				{ name: 'Vite', comp: IconBrandVite, color: '#646cff' },
-				{ name: 'Prisma', comp: IconBrandPrisma, color: '#2d3748' },
-				{ name: 'Stripe', comp: IconBrandStripe, color: '#6772e5' }
+				{ name: 'Prisma', comp: IconBrandPrisma, color: '#ffffff' },
+				{ name: 'Stripe', comp: IconBrandStripe, color: '#6772e5' },
+				{ name: 'Next.js', comp: IconBrandNextjs, color: '#ffffff' }
 			]
 		},
 		{
@@ -62,7 +64,7 @@
 				{ name: 'Python', comp: IconBrandPython, color: '#3776ab' },
 				{ name: 'Mongodb', comp: IconBrandMongodb, color: '#4db33d' },
 				{ name: 'Firebase', comp: IconBrandFirebase, color: '#ffca28' },
-				{ name: 'Three.js', comp: IconBrandThreejs, color: '#000000' },
+				{ name: 'Three.js', comp: IconBrandThreejs, color: '#ffffff' },
 				{ name: 'GraphQL', comp: IconBrandGraphql, color: '#e535ab' }
 			]
 		}
