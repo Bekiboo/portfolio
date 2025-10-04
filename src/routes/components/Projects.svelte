@@ -21,12 +21,12 @@
 			tags: ['Svelte', 'Tailwind', 'Daisy UI', 'Threlte', 'Konva']
 		},
 		{
-			title: 'Mulligan',
-			href: 'https://mulligan.vercel.app/',
-			src: 'image/logo-mulligan.svg',
-			desc: 'A prototype Virtual Table Top app. In its current state it allows players to share a board and move tokens around in realtime.',
-			gitUrl: 'https://github.com/Bekiboo/mulligan',
-			tags: ['Svelte', 'Tailwind', 'Supabase']
+			title: 'Orobo',
+			href: 'https://app.orobo.tech/',
+			src: 'image/logo-orobo.png',
+			desc: 'Public repository of published Digital Product Passports (DPPs)',
+			gitUrl: 'https://github.com/Orobo-Pte-Ltd',
+			tags: ['Svelte', 'Tailwind', 'NestJS', 'PostgreSQL']
 		}
 	]
 </script>
