@@ -14,7 +14,7 @@
 		<Header />
 	</header>
 
-	<main class="lg:col-start-2">
+	<main class="lg:col-start-2 lg:mt-16">
 		<!---------- ACADEMICS ---------->
 		<section class="mb-12">
 			<Title title="Academics" />
