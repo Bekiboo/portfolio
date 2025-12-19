@@ -18,9 +18,7 @@
 		<!---------- ACADEMICS ---------->
 		<section class="mb-12">
 			<Title title="Academics" />
-			<h3 class="text-xl">
-				Bachelor of Science in Applied Technology – <span class="text-slate-400">2024</span>
-			</h3>
+
 			<Academics />
 		</section>
 
