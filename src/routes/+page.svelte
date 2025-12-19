@@ -2,6 +2,7 @@
 	import Projects from './components/Projects.svelte'
 	import Technos from './components/Technos.svelte'
 	import Academics from './components/Academics.svelte'
+	import Experience from './components/Experience.svelte'
 	import Header from './components/Header.svelte'
 	import Title from './components/Title.svelte'
 </script>
@@ -15,11 +16,10 @@
 	</header>
 
 	<main class="lg:col-start-2 lg:mt-16">
-		<!---------- ACADEMICS ---------->
+		<!---------- EXPERIENCE ---------->
 		<section class="mb-12">
-			<Title title="Academics" />
-
-			<Academics />
+			<Title title="Experience" />
+			<Experience />
 		</section>
 
 		<!---------- TECHNOLOGIES ---------->
@@ -32,6 +32,13 @@
 		<section class="mb-12">
 			<Title title="Featured Projects" />
 			<Projects />
+		</section>
+
+		<!---------- ACADEMICS ---------->
+		<section class="mb-12">
+			<Title title="Academics" />
+
+			<Academics />
 		</section>
 	</main>
 </div>
