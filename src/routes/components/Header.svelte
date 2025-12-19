@@ -16,11 +16,12 @@
 	</h1>
 </a>
 <h2 class="mt-3 text-lg font-medium tracking-tight text-slate-200 sm:text-xl">
-	Mid-Level Front-End Engineer
+	Software Engineer (Front-End Focused)
 </h2>
 <p class="max-w-xs mt-4 mb-8 leading-normal text-slate-400">
-	I'm a design-minded, detail oriented Front-End Engineer passionate about combining clean code with
-	interactive design.
+	Full-Stack Engineer with a strong front-end focus, experienced in building end-to-end systems in
+	early-stage startups. I work across UI, API design, authentication, and data modeling, with a
+	focus on maintainable architecture and developer experience.
 </p>
 
 <button data-colliding onclick={copyEmail}><Button text="Copy Email" classes="uppercase" /></button>
