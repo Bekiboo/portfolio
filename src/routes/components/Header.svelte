@@ -16,7 +16,7 @@
 	</h1>
 </a>
 <h2 class="mt-3 text-lg font-medium tracking-tight text-slate-200 sm:text-xl">
-	Junior Front-End Engineer
+	Mid-Level Front-End Engineer
 </h2>
 <p class="max-w-xs mt-4 mb-8 leading-normal text-slate-400">
 	I'm a design-minded, detail oriented Front-End Engineer passionate about combining clean code with
