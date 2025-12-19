@@ -9,53 +9,45 @@
 	let gitHovered = $state(false)
 </script>
 
-<div class="grid grid-cols-12 gap-4 duration-100">
-	<a class="col-span-2" target="_blank" {href}
-		><img
-			class="w-full text-blue-500"
-			{src}
-			alt="{title} Logo"
-			onmouseenter={() => (logoHovered = true)}
-			onmouseleave={() => (logoHovered = false)}
-		/></a
-	>
-	<div class="col-span-10">
-		<div class="flex justify-between">
-			<a
-				target="_blank"
-				{href}
-				class="flex gap-2 text-xl text-blue-400 duration-100 hover:text-blue-300 hover:underline"
-				class:underline={logoHovered}
-				class:text-blue-300={logoHovered}
+<div class="space-y-2">
+	<div class="flex items-start justify-between gap-4">
+		<div class="flex items-start gap-3">
+			<a class="flex-shrink-0 w-10 h-10" target="_blank" {href}
+				><img
+					class="w-full h-full object-contain"
+					{src}
+					alt="{title} Logo"
+					onmouseenter={() => (logoHovered = true)}
+					onmouseleave={() => (logoHovered = false)}
+				/></a
 			>
-				{title}
-				<IconExternalLink />
-			</a>
-			<a
-				target="_blank"
-				href={gitUrl}
-				aria-label="GitHub Repository"
-				onmouseenter={() => (gitHovered = true)}
-				onmouseleave={() => (gitHovered = false)}
-				class="flex items-center justify-center h-8 gap-1 px-1 overflow-hidden duration-100 group hover:bg-blue-700 text-slate-300"
-			>
-				{#if gitHovered}
-					<span
-						data-colliding
-						class="hidden ml-1 group-hover:sm:block"
-						transition:slide={{ axis: 'x', duration: 100 }}>GitHub</span
-					>
-				{/if}
-				<IconBrandGithub color={'currentColor'} size={24} />
-			</a>
+			<div class="flex-1">
+				<a
+					target="_blank"
+					{href}
+					class="inline-flex items-center gap-1.5 text-lg font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+					class:text-blue-300={logoHovered}
+				>
+					{title}
+					<IconExternalLink size={18} />
+				</a>
+			</div>
 		</div>
-		<p class="text-slate-400">
-			{desc}
-		</p>
-		<div class="flex flex-wrap gap-2 mt-2">
-			{#each tags as tag}
-				<span class="px-2 rounded-full text-slate-300 bg-slate-700">{tag}</span>
-			{/each}
-		</div>
+		<a
+			target="_blank"
+			href={gitUrl}
+			aria-label="GitHub Repository"
+			class="text-slate-400 hover:text-slate-300 transition-colors"
+		>
+			<IconBrandGithub size={20} />
+		</a>
+	</div>
+	<p class="text-sm text-slate-400 pl-13">
+		{desc}
+	</p>
+	<div class="flex flex-wrap gap-1.5 pl-13">
+		{#each tags as tag}
+			<span class="px-2.5 py-1 text-xs text-slate-400 bg-slate-800/50 rounded">{tag}</span>
+		{/each}
 	</div>
 </div>

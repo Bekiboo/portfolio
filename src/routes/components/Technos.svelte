@@ -33,13 +33,15 @@
 	]
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-4">
 	{#each skills as { category, technos }}
 		<div>
-			<h3 class="mb-3 text-lg font-semibold">{category}</h3>
-			<ul class="flex flex-wrap gap-2">
+			<h3 class="mb-2 text-sm font-semibold text-slate-300">{category}</h3>
+			<ul class="flex flex-wrap gap-1.5">
 				{#each technos as techno}
-					<li class="techno">
+					<li
+						class="px-2.5 py-1 text-xs text-slate-400 bg-slate-800/50 rounded transition-colors hover:bg-slate-700/50 hover:text-slate-300"
+					>
 						{techno}
 					</li>
 				{/each}
@@ -47,20 +49,3 @@
 		</div>
 	{/each}
 </div>
-
-<style>
-	.techno {
-		padding: 0.5rem 1rem;
-		background-color: rgba(226, 232, 240, 0.1);
-		border: 1px solid rgba(226, 232, 240, 0.2);
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		transition: all 0.2s;
-	}
-
-	.techno:hover {
-		background-color: rgba(226, 232, 240, 0.2);
-		border-color: rgba(226, 232, 240, 0.4);
-		transform: translateY(-2px);
-	}
-</style>
