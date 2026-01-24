@@ -5,6 +5,7 @@
 	import Experience from './components/Experience.svelte'
 	import Header from './components/Header.svelte'
 	import Title from './components/Title.svelte'
+	import { translations } from '$lib/i18n/store'
 </script>
 
 <div class="z-10 grid max-w-screen-xl min-h-screen px-4 pt-10 mx-auto lg:grid-cols-2 md:px-24">
@@ -18,25 +19,25 @@
 	<main class="lg:col-start-2 lg:mt-16">
 		<!---------- EXPERIENCE ---------->
 		<section class="mb-12">
-			<Title title="Experience" />
+			<Title title={$translations.navigation?.experience || 'Experience'} />
 			<Experience />
 		</section>
 
 		<!---------- TECHNOLOGIES ---------->
 		<section class="mb-12">
-			<Title title="Technologies" />
+			<Title title={$translations.navigation?.technologies || 'Technologies'} />
 			<Technos />
 		</section>
 
 		<!---------- PROJECTS ---------->
 		<section class="mb-12">
-			<Title title="Featured Projects" />
+			<Title title={$translations.navigation?.projects || 'Featured Projects'} />
 			<Projects />
 		</section>
 
 		<!---------- ACADEMICS ---------->
 		<section class="mb-12">
-			<Title title="Academics" />
+			<Title title={$translations.navigation?.academics || 'Academics'} />
 
 			<Academics />
 		</section>

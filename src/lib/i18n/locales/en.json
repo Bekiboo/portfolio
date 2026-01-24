@@ -1,0 +1,100 @@
+{
+  "header": {
+    "name": "Julien Connault",
+    "title": "Software Engineer (Front-End Focused)",
+    "description": "Full-Stack Engineer with a strong front-end focus, experienced in building end-to-end systems in early-stage startups. I work across UI, API design, authentication, and data modeling, with a focus on maintainable architecture and developer experience.",
+    "copyEmail": "Copy Email"
+  },
+  "navigation": {
+    "experience": "Experience",
+    "technologies": "Technologies",
+    "projects": "Featured Projects",
+    "academics": "Academics"
+  },
+  "experience": [
+    {
+      "title": "Full-Stack Engineer",
+      "company": "Ensombl (Certless)",
+      "location": "Remote",
+      "period": "Nov 2025 – Present",
+      "description": "Building the foundations of Certless, a multi-role platform for secure logistics and document verification.",
+      "highlights": [
+        "Initialized the monorepo architecture (NestJS, SvelteKit, Docker) and implemented authentication, RBAC, and invitation flows",
+        "Integrated Better Auth with custom adapters and migrated backend validation to Zod with shared types",
+        "Set up MSW-based mock APIs and role-based dashboards to enable faster and safer frontend iteration",
+        "Reviewed API specifications, aligned end-to-end flows, and helped onboard other developers"
+      ]
+    },
+    {
+      "title": "Full-Stack Engineer",
+      "company": "Auvo Digital (Orobo)",
+      "location": "Remote",
+      "period": "Mar 2025 – Sep 2025",
+      "description": "Worked on Orobo, a platform for Digital Product Passports (DPPs) and verifiable credentials.",
+      "highlights": [
+        "Developed full-stack features using Svelte, NestJS, and SQL-based databases",
+        "Built reusable, accessible UI components and contributed to backend APIs and data modeling",
+        "Progressively took ownership of backend responsibilities within the NestJS codebase"
+      ]
+    },
+    {
+      "title": "Full-Stack Web Developer",
+      "company": "Elevatus Foundation",
+      "location": "",
+      "period": "2022 – Present",
+      "description": "Designing, building, and maintaining the website of a non-profit supporting trafficked children in Madagascar.",
+      "highlights": [
+        "Full ownership from design to production, including a recent complete redesign to improve UX and accessibility",
+        "Implemented a blog system with admin authentication and features supporting donor engagement"
+      ]
+    },
+    {
+      "title": "Early-Stage Startup & Client Projects",
+      "company": "",
+      "location": "",
+      "period": "2022 – 2024",
+      "description": "Contributed to multiple early-stage startups and client projects, often with full-stack ownership, while completing a Bachelor's degree.",
+      "highlights": [
+        "Worked in small teams or solo on MVPs and V0 platforms under tight constraints",
+        "Developed strong autonomy, adaptability, and pragmatic problem-solving skills"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Elevatus Foundation",
+      "href": "https://www.elevatus-foundation.org/",
+      "src": "image/logo-elevatus.svg",
+      "desc": "Website for the Elevatus Foundation, a non-profit organization that provides education for trafficked children in Madagascar.",
+      "gitUrl": "https://github.com/Bekiboo/Elevatus-2.0",
+      "tags": ["Svelte", "Tailwind", "Supabase"]
+    },
+    {
+      "title": "Sandbox",
+      "href": "https://bekiboo-sandbox.vercel.app/",
+      "src": "image/logo-sandbox.svg",
+      "desc": "A collection of small projects and experiments. This website is always evolving and might be prone to bugs.",
+      "gitUrl": "https://github.com/Bekiboo/sandbox",
+      "tags": ["Svelte", "Tailwind", "Daisy UI", "Threlte", "Konva"]
+    },
+    {
+      "title": "Orobo",
+      "href": "https://orobo.tech/",
+      "src": "image/logo-orobo.png",
+      "desc": "Public repository of published Digital Product Passports (DPPs)",
+      "gitUrl": "https://github.com/Orobo-Pte-Ltd",
+      "tags": ["Svelte", "Tailwind", "NestJS", "PostgreSQL"]
+    }
+  ],
+  "academics": {
+    "degreeTitle": "Bachelor of Science in Applied Technology",
+    "period": "2024",
+    "gpa": "3.96 GPA",
+    "honor": "Summa Cum Laude",
+    "university": {
+      "name": "Brigham Young University Idaho",
+      "url": "https://www.byui.edu/"
+    },
+    "coursework": "Additional coursework in Web Development, Computer Programming, and Business Analysis"
+  }
+}

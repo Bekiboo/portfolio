@@ -1,0 +1,100 @@
+{
+  "header": {
+    "name": "Julien Connault",
+    "title": "Ingénieur Logiciel (Focus Front-End)",
+    "description": "Ingénieur Full-Stack avec un focus front-end, expérimenté dans la construction de systèmes end-to-end dans les startups en phase de lancement. Je travaille sur l'UI, la conception d'API, l'authentification et la modélisation de données, en mettant l'accent sur une architecture maintenable et une bonne expérience développeur.",
+    "copyEmail": "Copier l'email"
+  },
+  "navigation": {
+    "experience": "Expérience",
+    "technologies": "Technologies",
+    "projects": "Projets en vedette",
+    "academics": "Formation"
+  },
+  "experience": [
+    {
+      "title": "Ingénieur Full-Stack",
+      "company": "Ensombl (Certless)",
+      "location": "Remote",
+      "period": "Nov 2025 – Présent",
+      "description": "Construction des fondations de Certless, une plateforme multi-rôles pour la logistique sécurisée et la vérification de documents.",
+      "highlights": [
+        "Initialisation de l'architecture monorepo (NestJS, SvelteKit, Docker) et implémentation de l'authentification, RBAC et flux d'invitation",
+        "Intégration de Better Auth avec des adaptateurs personnalisés et migration de la validation backend vers Zod avec types partagés",
+        "Configuration d'APIs mock basées sur MSW et dashboards basés sur les rôles pour une itération frontend plus rapide et sûre",
+        "Révision des spécifications d'API, alignement des flux end-to-end et aide à l'intégration d'autres développeurs"
+      ]
+    },
+    {
+      "title": "Ingénieur Full-Stack",
+      "company": "Auvo Digital (Orobo)",
+      "location": "Remote",
+      "period": "Mar 2025 – Sep 2025",
+      "description": "Travail sur Orobo, une plateforme pour les Passeports Numériques de Produits (DPPs) et les identifiants vérifiables.",
+      "highlights": [
+        "Développement de features full-stack avec Svelte, NestJS et des bases de données SQL",
+        "Construction de composants UI réutilisables et accessibles, contribution aux APIs backend et modélisation de données",
+        "Prise progressive de responsabilités backend dans la codebase NestJS"
+      ]
+    },
+    {
+      "title": "Développeur Web Full-Stack",
+      "company": "Elevatus Foundation",
+      "location": "",
+      "period": "2022 – Présent",
+      "description": "Conception, construction et maintenance du site web d'une association supportant les enfants victimes de traite à Madagascar.",
+      "highlights": [
+        "Responsabilité complète du design à la production, incluant une refonte récente pour améliorer l'UX et l'accessibilité",
+        "Implémentation d'un système de blog avec authentification admin et features supportant l'engagement des donateurs"
+      ]
+    },
+    {
+      "title": "Startups en phase de lancement & Projets clients",
+      "company": "",
+      "location": "",
+      "period": "2022 – 2024",
+      "description": "Contribution à plusieurs startups en phase de lancement et projets clients, souvent avec une responsabilité full-stack, tout en complétant un Bachelor.",
+      "highlights": [
+        "Travail en petites équipes ou en solo sur des MVPs et plateformes V0 sous contraintes serrées",
+        "Développement d'une autonomie forte, adaptabilité et compétences pragmatiques en résolution de problèmes"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Elevatus Foundation",
+      "href": "https://www.elevatus-foundation.org/",
+      "src": "image/logo-elevatus.svg",
+      "desc": "Site web de la Fondation Elevatus, une association qui fournit l'éducation pour les enfants victimes de traite à Madagascar.",
+      "gitUrl": "https://github.com/Bekiboo/Elevatus-2.0",
+      "tags": ["Svelte", "Tailwind", "Supabase"]
+    },
+    {
+      "title": "Sandbox",
+      "href": "https://bekiboo-sandbox.vercel.app/",
+      "src": "image/logo-sandbox.svg",
+      "desc": "Une collection de petits projets et expériences. Ce site est en constante évolution et peut contenir des bugs.",
+      "gitUrl": "https://github.com/Bekiboo/sandbox",
+      "tags": ["Svelte", "Tailwind", "Daisy UI", "Threlte", "Konva"]
+    },
+    {
+      "title": "Orobo",
+      "href": "https://orobo.tech/",
+      "src": "image/logo-orobo.png",
+      "desc": "Dépôt public des Passeports Numériques de Produits (DPPs) publiés",
+      "gitUrl": "https://github.com/Orobo-Pte-Ltd",
+      "tags": ["Svelte", "Tailwind", "NestJS", "PostgreSQL"]
+    }
+  ],
+  "academics": {
+    "degreeTitle": "Bachelor of Science en Applied Technology",
+    "period": "2024",
+    "gpa": "Moyenne 3.96",
+    "honor": "Summa Cum Laude",
+    "university": {
+      "name": "Brigham Young University Idaho",
+      "url": "https://www.byui.edu/"
+    },
+    "coursework": "Cours complémentaires en Développement Web, Programmation et Analyse Business"
+  }
+}
