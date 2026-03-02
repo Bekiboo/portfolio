@@ -14,16 +14,18 @@
   "experience": [
     {
       "title": "Ingénieur Full-Stack",
-      "company": "Ensombl (Certless)",
-      "location": "Remote",
-      "period": "Nov 2025 – Présent",
-      "description": "Construction des fondations de Certless, une plateforme multi-rôles pour la logistique sécurisée et la vérification de documents.",
-      "highlights": [
-        "Initialisation de l'architecture monorepo (NestJS, SvelteKit, Docker) et implémentation de l'authentification, RBAC et flux d'invitation",
-        "Intégration de Better Auth avec des adaptateurs personnalisés et migration de la validation backend vers Zod avec types partagés",
-        "Configuration d'APIs mock basées sur MSW et dashboards basés sur les rôles pour une itération frontend plus rapide et sûre",
-        "Révision des spécifications d'API, alignement des flux end-to-end et aide à l'intégration d'autres développeurs"
-      ]
+  "company": "Ensombl",
+  "location": "Remote",
+  "period": "Nov 2025 – Présent",
+  "description": "Architecture et développement d'un écosystème d'applications à haute confiance, incluant Certless (logistique sécurisée) et Metastate (identité numérique et gouvernance), via des architectures Monorepo (SvelteKit, NestJS).",
+  "highlights": [
+    "Architecture et maintenance d'un monorepo robuste (NestJS, SvelteKit, Docker) avec authentification avancée (Better Auth) et contrats de données typés via Zod.",
+    "Direction du développement des flux d'onboarding KYC et du service de 'Trust Score' pour le eID Wallet de Metastate, incluant la vérification d'identité et la gestion d'événements d'audit.",
+    "Conception de visualisations de données interactives (Force-Directed Graphs) pour cartographier les références signées et les graphes sociaux au sein du panneau de contrôle.",
+    "Standardisation de l'excellence frontend via l'implémentation de Formsnap/Superforms et la mise en place de mocks MSW pour découpler le développement et accélérer les cycles d'itération.",
+    "Optimisation de la stabilité multiplateforme (iOS/Android), résolution de bugs de rendu critiques et implémentation de liens profonds (deep linking) spécifiques aux stores d'applications.",
+    "Mentorat technique via la revue de PR complexes (plus de 9000 lignes de code) et l'onboarding de nouveaux développeurs sur les spécifications API et l'architecture du projet."
+  ]
     },
     {
       "title": "Ingénieur Full-Stack",

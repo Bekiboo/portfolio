@@ -14,16 +14,18 @@
   "experience": [
     {
       "title": "Full-Stack Engineer",
-      "company": "Ensombl (Certless)",
-      "location": "Remote",
-      "period": "Nov 2025 – Present",
-      "description": "Building the foundations of Certless, a multi-role platform for secure logistics and document verification.",
-      "highlights": [
-        "Initialized the monorepo architecture (NestJS, SvelteKit, Docker) and implemented authentication, RBAC, and invitation flows",
-        "Integrated Better Auth with custom adapters and migrated backend validation to Zod with shared types",
-        "Set up MSW-based mock APIs and role-based dashboards to enable faster and safer frontend iteration",
-        "Reviewed API specifications, aligned end-to-end flows, and helped onboard other developers"
-      ]
+  "company": "Ensombl",
+  "location": "Remote",
+  "period": "Nov 2025 – Present",
+  "description": "Architecting and scaling a high-trust ecosystem of applications, including Certless (secure logistics) and Metastate (digital identity/governance), utilizing SvelteKit, NestJS, and Monorepo architectures.",
+  "highlights": [
+    "Architected and maintained a robust monorepo (NestJS, SvelteKit, Docker) implementing advanced authentication with Better Auth, Zod-driven validation, and shared type-safe contracts.",
+    "Led the development of a KYC-first onboarding flow and Trust Score Service for the Metastate eID Wallet, incorporating complex identity verification and audit event logging.",
+    "Engineered interactive data visualizations using force-directed graphs to map signed e-references and social graphs within the governance control panel.",
+    "Standardized frontend excellence by implementing Formsnap/Superforms for accessible UX and MSW-based mock APIs to decouple development and accelerate iteration cycles.",
+    "Collaborated on cross-platform mobile stability, resolving critical iOS/Android rendering bugs and implementing platform-specific deep linking for digital asset stores.",
+    "Mentored team members through comprehensive PR reviews (including 9000+ LoC refactors) and provided architectural technical overviews to facilitate rapid onboarding."
+  ]
     },
     {
       "title": "Full-Stack Engineer",
