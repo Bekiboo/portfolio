@@ -17,14 +17,14 @@
   "company": "Ensombl",
   "location": "Remote",
   "period": "Nov 2025 – Présent",
-  "description": "Architecture et développement d'un écosystème d'applications à haute confiance, incluant Certless (logistique sécurisée) et Metastate (identité numérique et gouvernance), via des architectures Monorepo (SvelteKit, NestJS).",
+  "description": "Architecture d'un écosystème logistique et d'identité numérique (Certless & Metastate) via SvelteKit, NestJS et Monorepo.",
   "highlights": [
-    "Architecture et maintenance d'un monorepo robuste (NestJS, SvelteKit, Docker) avec authentification avancée (Better Auth) et contrats de données typés via Zod.",
-    "Direction du développement des flux d'onboarding KYC et du service de 'Trust Score' pour le eID Wallet de Metastate, incluant la vérification d'identité et la gestion d'événements d'audit.",
-    "Conception de visualisations de données interactives (Force-Directed Graphs) pour cartographier les références signées et les graphes sociaux au sein du panneau de contrôle.",
-    "Standardisation de l'excellence frontend via l'implémentation de Formsnap/Superforms et la mise en place de mocks MSW pour découpler le développement et accélérer les cycles d'itération.",
-    "Optimisation de la stabilité multiplateforme (iOS/Android), résolution de bugs de rendu critiques et implémentation de liens profonds (deep linking) spécifiques aux stores d'applications.",
-    "Mentorat technique via la revue de PR complexes (plus de 9000 lignes de code) et l'onboarding de nouveaux développeurs sur les spécifications API et l'architecture du projet."
+    "Mise en place d'un Monorepo (NestJS, SvelteKit, Docker) avec Better Auth et sécurité des types via Zod.",
+    "Développement d'un flux d'onboarding KYC et d'un service de 'Trust Score' pour le eID Wallet de Metastate.",
+    "Création de graphes de force interactifs pour visualiser les références signées et les données de gouvernance.",
+    "Standardisation du frontend (MSW, Formsnap, Superforms) pour accélérer les cycles d'itération UI.",
+    "Résolution de bugs critiques sur mobile (iOS/Android) et intégration de deep linking spécifique aux stores.",
+    "Mentorat technique et revues d'architecture sur des refontes majeures (9000+ lignes de code)."
   ]
     },
     {

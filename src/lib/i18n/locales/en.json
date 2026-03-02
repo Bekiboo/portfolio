@@ -17,14 +17,14 @@
   "company": "Ensombl",
   "location": "Remote",
   "period": "Nov 2025 – Present",
-  "description": "Architecting and scaling a high-trust ecosystem of applications, including Certless (secure logistics) and Metastate (digital identity/governance), utilizing SvelteKit, NestJS, and Monorepo architectures.",
+  "description": "Architecting a secure logistics and digital identity ecosystem (Certless & Metastate) using SvelteKit, NestJS, and Monorepo patterns.",
   "highlights": [
-    "Architected and maintained a robust monorepo (NestJS, SvelteKit, Docker) implementing advanced authentication with Better Auth, Zod-driven validation, and shared type-safe contracts.",
-    "Led the development of a KYC-first onboarding flow and Trust Score Service for the Metastate eID Wallet, incorporating complex identity verification and audit event logging.",
-    "Engineered interactive data visualizations using force-directed graphs to map signed e-references and social graphs within the governance control panel.",
-    "Standardized frontend excellence by implementing Formsnap/Superforms for accessible UX and MSW-based mock APIs to decouple development and accelerate iteration cycles.",
-    "Collaborated on cross-platform mobile stability, resolving critical iOS/Android rendering bugs and implementing platform-specific deep linking for digital asset stores.",
-    "Mentored team members through comprehensive PR reviews (including 9000+ LoC refactors) and provided architectural technical overviews to facilitate rapid onboarding."
+    "Built a high-performance Monorepo (NestJS, SvelteKit, Docker) with Better Auth and Zod-driven type safety.",
+    "Engineered a KYC-first onboarding flow and a Trust Score Service for the Metastate eID Wallet.",
+    "Developed interactive force-directed graphs to visualize signed e-references and social governance data.",
+    "Standardized frontend development with MSW mock APIs and Formsnap/Superforms for 2x faster UI iteration.",
+    "Resolved critical cross-platform mobile bugs (iOS/Android) and implemented platform-specific deep linking.",
+    "Mentored developers and led architectural reviews for major 9000+ LoC system refactors."
   ]
     },
     {
