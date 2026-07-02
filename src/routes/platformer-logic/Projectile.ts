@@ -4,6 +4,7 @@ import type { Platform } from './Platform'
 
 export class Projectile {
 	pos: { x: number; y: number }
+	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
 	angle: number
 	height: number
 	width: number
@@ -17,6 +18,7 @@ export class Projectile {
 
 	constructor(pos: { x: number; y: number }, angle: number, sprite: string) {
 		this.pos = pos
+		this.prevPos = { x: pos.x, y: pos.y }
 		this.image = getSprite('projectile', sprite).img
 		this.ticksPerFrame = getSprite('projectile', sprite).speed || 5
 		this.maxFrame = getSprite('projectile', sprite).frames || 0
@@ -30,6 +32,8 @@ export class Projectile {
 	}
 
 	update(deltaTime: number, platforms: Platform[]) {
+		this.prevPos.x = this.pos.x
+		this.prevPos.y = this.pos.y
 		this.pos.x += Math.cos(this.angle) * this.speed * deltaTime
 		this.pos.y += Math.sin(this.angle) * this.speed * deltaTime
 		this.ticksCount++
@@ -41,9 +45,11 @@ export class Projectile {
 		}
 	}
 
-	draw(ctx: CanvasRenderingContext2D) {
+	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
+		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
+		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
 		ctx.save()
-		ctx.translate(this.pos.x, this.pos.y)
+		ctx.translate(x, y)
 		ctx.rotate(this.angle)
 		if (Math.cos(this.angle) < 0) {
 			ctx.scale(1, -1)
@@ -71,15 +77,16 @@ export class Projectile {
 			if (
 				collision(
 					{
-						width: 1,
-						height: 1,
-						top: this.pos.y,
-						left: this.pos.x
+						width: this.width,
+						height: this.height,
+						top: this.pos.y - this.height / 2,
+						left: this.pos.x - this.width / 2
 					},
 					platform
 				)
 			) {
 				projectilesStore.delete(this)
+				break
 			}
 		}
 	}

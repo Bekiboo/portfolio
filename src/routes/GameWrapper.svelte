@@ -1,17 +1,14 @@
 <script lang="ts">
-	import { onMount } from 'svelte'
+	import { onMount, onDestroy } from 'svelte'
 	import { Platform } from './platformer-logic/Platform'
 	import { Player } from './platformer-logic/Player'
 	import { effects, projectiles } from '$lib/stores'
 	import type { Effect } from './platformer-logic/Effect'
 	import { keys } from './platformer-logic/controller'
 
-	interface Props {
-		children?: import('svelte').Snippet
-	}
-
-	let { children }: Props = $props()
-
+	// Fixed full-viewport canvas overlay (pointer-events: none) that renders the
+	// background platformer. It sits on top of the page content but never wraps it,
+	// so the page layout is unaffected and can be lazy-mounted without re-parenting.
 	let canvas: HTMLCanvasElement
 	let ctx: CanvasRenderingContext2D
 
@@ -22,8 +19,28 @@
 		y: 0
 	}
 
-	let lastTime = performance.now() // Initial timestamp for delta time calculation
+	// Fixed-timestep physics with render interpolation ("Fix Your Timestep"):
+	// the simulation advances in constant 60 Hz steps (deterministic and
+	// refresh-rate independent) while draw() interpolates between the last two
+	// steps, so motion stays smooth at the display's native refresh rate.
+	const FIXED_STEP = 1000 / 60 // physics tick length (ms)
+	const STEP_DELTA = FIXED_STEP / 12 // delta unit expected by the entities
+	const MAX_FRAME_TIME = 100 // clamp accumulated time to avoid a spiral after the tab was hidden
+
+	let lastTime = 0
+	let accumulator = 0
+	let rafId: number | null = null
 	let shootingInterval: number | null = null
+
+	// Platforms are derived from DOM elements; they only move on scroll/resize,
+	// so cache them and recompute lazily instead of every frame (avoids layout thrash).
+	let platforms: Platform[] = []
+	let platformsDirty = true
+	let canvasDirty = true
+	const markDirty = () => {
+		platformsDirty = true
+		canvasDirty = true
+	}
 
 	const startShooting = () => {
 		player.shoot()
@@ -47,58 +64,67 @@
 		mouse.y = e.clientY
 	}
 
-	const animate = (timestamp = performance.now()) => {
-		const deltaTime = (timestamp - lastTime) / 12 // Time elapsed since last frame in seconds
-		lastTime = timestamp // Update lastTime for the next frame
-
+	const resizeCanvas = () => {
 		canvas.width = canvas.clientWidth
 		canvas.height = canvas.clientHeight
+		canvasDirty = false
+	}
 
-		ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-		let collidingElements = document.querySelectorAll('[data-colliding]')
-		let platforms: Platform[] = []
-
+	const collectPlatforms = () => {
+		const collidingElements = document.querySelectorAll('[data-colliding]')
+		platforms = []
 		for (let i = 0; i < collidingElements.length; i++) {
-			let el = collidingElements[i].getBoundingClientRect()
-			let platform = new Platform(el.width, el.height, el.y, el.x)
-			platforms.push(platform)
-
-			platform.draw(ctx)
+			const el = collidingElements[i].getBoundingClientRect()
+			platforms.push(new Platform(el.width, el.height, el.y, el.x))
 		}
+		platformsDirty = false
+	}
 
-		$projectiles?.forEach((projectile) => {
-			projectile.update(deltaTime, platforms)
-			projectile.draw(ctx)
-		})
+	const animate = (timestamp: number) => {
+		if (lastTime === 0) lastTime = timestamp
+		const frameTime = Math.min(timestamp - lastTime, MAX_FRAME_TIME)
+		lastTime = timestamp
 
-		player.update(canvas, keys, mouse, platforms, deltaTime)
-		player.draw(ctx, deltaTime)
+		if (canvasDirty) resizeCanvas()
+		if (platformsDirty) collectPlatforms()
 
-		$effects?.forEach((effect: Effect) => {
-			effect.draw(ctx)
-		})
+		// Advance physics in fixed steps, consuming the elapsed real time.
+		accumulator += frameTime
+		while (accumulator >= FIXED_STEP) {
+			$projectiles?.forEach((projectile) => projectile.update(STEP_DELTA, platforms))
+			player.update(canvas, keys, mouse, platforms, STEP_DELTA)
+			accumulator -= FIXED_STEP
+		}
+		const alpha = accumulator / FIXED_STEP // fractional progress toward the next step
 
-		requestAnimationFrame(animate)
+		// Render once per frame, interpolating entities between their last two steps.
+		ctx.clearRect(0, 0, canvas.width, canvas.height)
+		for (const platform of platforms) platform.draw(ctx)
+		$projectiles?.forEach((projectile) => projectile.draw(ctx, alpha))
+		player.draw(ctx, frameTime / 12, alpha)
+		$effects?.forEach((effect: Effect) => effect.draw(ctx))
+
+		rafId = requestAnimationFrame(animate)
 	}
 
 	onMount(() => {
-		player = new Player({ x: 0, y: 0 })
-
 		canvas = document.querySelector('canvas') as HTMLCanvasElement
 		ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 
-		animate() // Start the animation loop
+		player = new Player({ x: 0, y: 0 })
+
+		rafId = requestAnimationFrame(animate) // Start the animation loop
+	})
+
+	onDestroy(() => {
+		// Stop the loop and timers so remounting (e.g. crossing the 1024px breakpoint)
+		// doesn't stack multiple animation loops.
+		if (rafId !== null) cancelAnimationFrame(rafId)
+		stopShooting()
 	})
 </script>
 
-<div class="wrapper">
-	<canvas class="z-10"></canvas>
-
-	<div class="content">
-		{@render children?.()}
-	</div>
-</div>
+<canvas class="z-10"></canvas>
 
 <svelte:window
 	onkeydown={(e) => keys.onkeydown(e, player)}
@@ -106,31 +132,16 @@
 	{onmousemove}
 	onmousedown={startShooting}
 	onmouseup={stopShooting}
+	onscroll={markDirty}
+	onresize={markDirty}
 />
 
 <style>
-	.wrapper {
-		display: grid;
-		grid-template-columns: 1fr;
-		grid-template-rows: 1fr;
-		min-height: 100vh;
-		user-select: none;
-	}
 	canvas {
 		position: fixed;
-		grid-column: 1;
-		grid-row: 1;
+		inset: 0;
 		width: 100vw;
 		height: 100vh;
 		pointer-events: none;
-	}
-
-	.content {
-		grid-column: 1;
-		grid-row: 1;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
 	}
 </style>

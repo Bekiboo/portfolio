@@ -2,6 +2,7 @@ import { effectsStore, projectilesStore } from '$lib/stores'
 import { Effect } from './Effect'
 import { Projectile } from './Projectile'
 import type { Platform } from './Platform'
+import type { KeyState } from './controller'
 import { collision, getSprite } from './utils'
 
 const GRAVITY = 0.33
@@ -9,6 +10,7 @@ const GRAVITY = 0.33
 export class Player {
 	character = 'punk'
 	pos: { x: number; y: number }
+	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
 	velocity: { x: number; y: number }
 	height = 80
 	width = 48
@@ -30,6 +32,7 @@ export class Player {
 		this.ticksPerFrame = sprite.speed || 5
 		this.maxFrame = sprite.frames ?? 0
 		this.pos = pos
+		this.prevPos = { x: pos.x, y: pos.y }
 		this.velocity = {
 			x: 0,
 			y: 1
@@ -38,11 +41,15 @@ export class Player {
 
 	update(
 		canvas: HTMLCanvasElement,
-		keys: { [key: string]: boolean },
+		keys: KeyState,
 		mouse: { x: number; y: number },
 		platforms: Platform[],
 		deltaTime: number
 	) {
+		// Snapshot the pre-step position so draw() can interpolate between steps.
+		this.prevPos.x = this.pos.x
+		this.prevPos.y = this.pos.y
+
 		this.pos.x += this.velocity.x * deltaTime // move left/right
 
 		// Order of these methods is VERY important
@@ -64,13 +71,17 @@ export class Player {
 		this.angle = baseAngle
 	}
 
-	draw(ctx: CanvasRenderingContext2D, deltaTime: number) {
-		this.#drawHand(ctx)
-		this.#drawWeapon(ctx)
-		this.#drawCharacter(ctx, deltaTime)
+	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
+		// Render at the interpolated position between the last two physics steps
+		// so motion stays smooth at the display's refresh rate.
+		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
+		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		this.#drawHand(ctx, x, y)
+		this.#drawWeapon(ctx, x, y)
+		this.#drawCharacter(ctx, deltaTime, x, y)
 	}
 
-	#drawCharacter(ctx: CanvasRenderingContext2D, deltaTime: number) {
+	#drawCharacter(ctx: CanvasRenderingContext2D, deltaTime: number, x: number, y: number) {
 		this.#animate(deltaTime)
 		if (this.direction === 'right') {
 			ctx.drawImage(
@@ -79,14 +90,14 @@ export class Player {
 				8,
 				this.width,
 				this.height,
-				this.pos.x,
-				this.pos.y,
+				x,
+				y,
 				this.width * 2,
 				this.height * 2
 			)
 		} else {
 			ctx.save()
-			ctx.translate(this.pos.x + this.width, this.pos.y)
+			ctx.translate(x + this.width, y)
 			ctx.scale(-1, 1)
 			ctx.drawImage(
 				this.image,
@@ -103,9 +114,9 @@ export class Player {
 		}
 	}
 
-	#drawWeapon(ctx: CanvasRenderingContext2D) {
+	#drawWeapon(ctx: CanvasRenderingContext2D, x: number, y: number) {
 		ctx.save()
-		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
+		ctx.translate(x + this.width / 2, y + this.height / 2)
 		// if the player is facing left, flip the weapon
 		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
 		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
@@ -124,9 +135,9 @@ export class Player {
 		ctx.restore()
 	}
 
-	#drawHand(ctx: CanvasRenderingContext2D) {
+	#drawHand(ctx: CanvasRenderingContext2D, x: number, y: number) {
 		ctx.save()
-		ctx.translate(this.pos.x + this.width / 2, this.pos.y + this.height / 2)
+		ctx.translate(x + this.width / 2, y + this.height / 2)
 		// if the player is facing left, flip the hand
 		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
 		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
@@ -182,7 +193,7 @@ export class Player {
 		if (this.frame > this.maxFrame) this.frame = 1
 	}
 
-	#handleKeys(keys: { [key: string]: boolean }) {
+	#handleKeys(keys: KeyState) {
 		if ((keys['right'] || keys['left']) && !this.velocity.y && !keys['punch']) {
 			this.#playerSprite('run')
 		}
@@ -219,7 +230,7 @@ export class Player {
 		this.jumpAvailable--
 	}
 
-	punch(keys: { [key: string]: boolean }) {
+	punch(keys: KeyState) {
 		if (keys['right'] || keys['left']) {
 			this.#playerSprite('run_attack')
 		} else {

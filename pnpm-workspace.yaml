@@ -1,0 +1,8 @@
+# Native deps allowed to run install/build scripts (pnpm >= 10 blocks these by default).
+# @tailwindcss/oxide + esbuild ship prebuilt binaries and need their postinstall.
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - esbuild
+allowBuilds:
+  '@tailwindcss/oxide': true
+  esbuild: true

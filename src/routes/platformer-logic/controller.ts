@@ -1,5 +1,13 @@
 import type { Player } from './Player'
 
+export interface KeyState {
+	left: boolean
+	right: boolean
+	up: boolean
+	down: boolean
+	punch: boolean
+}
+
 export const keys = {
 	left: false,
 	right: false,
@@ -15,8 +23,10 @@ export const keys = {
 				keys.right = true
 				break
 			case 'KeyW':
+				// Only jump on the initial press; ignore the OS key-repeat while held,
+				// otherwise holding W would instantly consume the double jump.
+				if (!keys.up) player.jump()
 				keys.up = true
-				player.jump()
 				break
 			case 'KeyS':
 				keys.down = true
