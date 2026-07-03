@@ -230,9 +230,9 @@ export class Enemy {
 		ctx.restore()
 	}
 
-	/** Apply one hit. Returns true if it killed the enemy. */
-	hit(): boolean {
-		this.health--
+	/** Apply `damage` (default 1). Returns true if it killed the enemy. */
+	hit(damage = 1): boolean {
+		this.health -= damage
 		this.hitFlash = 6
 		if (this.health <= 0) {
 			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 28 }, 'smoke_12'))

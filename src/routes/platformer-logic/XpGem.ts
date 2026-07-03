@@ -32,7 +32,13 @@ export class XpGem {
 		this.velocity = { x: (Math.random() - 0.5) * 6, y: -Math.random() * 4 - 3 }
 	}
 
-	update(canvas: HTMLCanvasElement, player: Player, platforms: Platform[], deltaTime: number) {
+	update(
+		canvas: HTMLCanvasElement,
+		player: Player,
+		platforms: Platform[],
+		deltaTime: number,
+		magnetRadius = MAGNET_RADIUS
+	) {
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
 		this.age++
@@ -48,7 +54,7 @@ export class XpGem {
 		const dx = px - (this.pos.x + this.width / 2)
 		const dy = py - (this.pos.y + this.height / 2)
 		const dist = Math.hypot(dx, dy) || 1
-		if (dist < MAGNET_RADIUS) {
+		if (dist < magnetRadius) {
 			this.velocity.x += (dx / dist) * MAGNET_PULL
 			this.velocity.y += (dy / dist) * MAGNET_PULL
 			this.grounded = false

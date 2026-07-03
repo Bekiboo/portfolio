@@ -22,6 +22,8 @@ export class Player {
 	ticksCount = 0
 	direction = 'right'
 	angle = 0
+	projectileCount = 1 // bolts per shot (Multi-Shot upgrade)
+	damage = 1 // damage per bolt (Power Shot upgrade)
 	isFalling = false
 	jumpAvailable = 2
 	status = 'idle'
@@ -156,20 +158,23 @@ export class Player {
 	}
 
 	shoot() {
-		const weaponLength = 60 // Distance from the center of the character to the weapon's end
-		const offsetX = Math.cos(this.angle) * weaponLength
-		const offsetY = Math.sin(this.angle) * weaponLength
-
-		projectilesStore.add(
-			new Projectile(
-				{
-					x: this.pos.x + this.width / 2 + offsetX,
-					y: this.pos.y + this.height / 2 + offsetY
-				},
-				this.angle,
-				'blue'
+		const weaponLength = 60 // distance from the character's centre to the muzzle
+		const cx = this.pos.x + this.width / 2
+		const cy = this.pos.y + this.height / 2
+		// Fan the bolts around the aim angle when Multi-Shot is stacked.
+		const spread = 0.18 // radians between adjacent bolts
+		const base = this.angle - (spread * (this.projectileCount - 1)) / 2
+		for (let i = 0; i < this.projectileCount; i++) {
+			const a = base + spread * i
+			projectilesStore.add(
+				new Projectile(
+					{ x: cx + Math.cos(a) * weaponLength, y: cy + Math.sin(a) * weaponLength },
+					a,
+					'blue',
+					{ damage: this.damage }
+				)
 			)
-		)
+		}
 	}
 
 	#animate(deltaTime: number) {

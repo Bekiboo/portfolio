@@ -16,12 +16,13 @@ export class Projectile {
 	ticksCount = 0
 	sprite!: string
 	hostile = false // enemy shot (damages the player) vs player bolt (damages enemies)
+	damage = 1 // HP removed from an enemy on hit (player bolts; raised by Power Shot)
 
 	constructor(
 		pos: { x: number; y: number },
 		angle: number,
 		sprite: string,
-		opts: { hostile?: boolean; speed?: number } = {}
+		opts: { hostile?: boolean; speed?: number; damage?: number } = {}
 	) {
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
@@ -33,6 +34,7 @@ export class Projectile {
 		this.speed = opts.speed ?? 12
 		this.angle = angle
 		this.hostile = opts.hostile ?? false
+		this.damage = opts.damage ?? 1
 		// Enemy shots are drawn as a small orb, so give them a compact square hitbox.
 		if (this.hostile) {
 			this.width = 12

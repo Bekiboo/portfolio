@@ -8,7 +8,7 @@
 	import { Effect } from './platformer-logic/Effect'
 	import { collision } from './platformer-logic/utils'
 	import { keys } from './platformer-logic/controller'
-	import { gameStarted, gameStatus, score, playerHp, MAX_HP, wave, xp, startRun, stopRun, gameOver } from '$lib/game'
+	import { gameStatus, score, playerHp, maxHp, wave, xp, level, levelXp, levelXpNeeded, addXp, startRun, stopRun, gameOver } from '$lib/game'
 	import { get } from 'svelte/store'
 	import Button from './components/Button.svelte'
 
@@ -44,10 +44,105 @@
 
 	// Auto-attack: the player fires at the nearest enemy on this cadence while a run
 	// is active. No mouse — the pointer stays free to read/scroll the CV.
-	const PLAYER_FIRE_STEPS = 20 // physics steps between shots (~3/s at 60 Hz)
 	let playerFireCooldown = 0
 
+	// Run-scoped tunables. Each starts at its base every run and is bumped by the
+	// level-up upgrades below; resetUpgrades() restores the baseline on a fresh run.
+	const BASE_FIRE_STEPS = 20 // physics steps between shots (~3/s)
+	const BASE_INVULN = 72 // ~1.2s of i-frames after a hit
+	const BASE_MAGNET = 78 // XP-gem pickup radius (px)
+	const BASE_SPEED = 5 // player move speed
+	let fireSteps = BASE_FIRE_STEPS
+	let invulnSteps = BASE_INVULN
+	let magnetRadius = BASE_MAGNET
+	let xpMul = 1 // XP banked per gem
+
+	const resetUpgrades = () => {
+		fireSteps = BASE_FIRE_STEPS
+		invulnSteps = BASE_INVULN
+		magnetRadius = BASE_MAGNET
+		xpMul = 1
+		player.speed = BASE_SPEED
+		player.projectileCount = 1
+		player.damage = 1
+	}
+
+	// --- Level-up upgrades ----------------------------------------------------
+	// On each level-up the game freezes and offers 3 of these at random. Most stack
+	// indefinitely (VS-style); Bandage only appears when the player is hurt.
+	type UpgradeKind = 'atk' | 'def' | 'util'
+	interface Upgrade {
+		id: string
+		name: string
+		desc: string
+		kind: UpgradeKind
+		apply: () => void
+		available?: () => boolean
+	}
+	const UPGRADES: Upgrade[] = [
+		{ id: 'rapid', name: 'Rapid Fire', desc: 'Cadence de tir +15%', kind: 'atk',
+			apply: () => (fireSteps = Math.max(4, Math.round(fireSteps * 0.85))) },
+		{ id: 'multi', name: 'Multi-Shot', desc: '+1 projectile par tir', kind: 'atk',
+			apply: () => player.projectileCount++ },
+		{ id: 'power', name: 'Power Shot', desc: '+1 dégât par tir', kind: 'atk',
+			apply: () => player.damage++ },
+		{ id: 'vitality', name: 'Vitality', desc: '+1 PV max (et soigne)', kind: 'def',
+			apply: () => { maxHp.update((m) => m + 1); playerHp.update((h) => h + 1) } },
+		{ id: 'bandage', name: 'Bandage', desc: 'Soin complet', kind: 'def',
+			apply: () => playerHp.set(get(maxHp)), available: () => get(playerHp) < get(maxHp) },
+		{ id: 'iron', name: 'Iron Skin', desc: 'Invincibilité +30%', kind: 'def',
+			apply: () => (invulnSteps = Math.round(invulnSteps * 1.3)) },
+		{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +40', kind: 'util',
+			apply: () => (magnetRadius += 40) },
+		{ id: 'swift', name: 'Swift', desc: 'Vitesse de déplacement +', kind: 'util',
+			apply: () => (player.speed += 0.6) },
+		{ id: 'greed', name: 'Greed', desc: '+1 XP par gemme', kind: 'util',
+			apply: () => (xpMul += 1) }
+	]
+
+	// The level-up pause. gameStatus stays 'playing' (so the field isn't cleared);
+	// this flag freezes the sim and shows the pick modal until a choice is made.
+	let levelUpOpen = $state(false)
+	let choices = $state<Upgrade[]>([])
+	let pendingLevelUps = 0
+
+	// Draw 3 distinct, currently-available upgrades at random.
+	const rollChoices = (): Upgrade[] => {
+		const pool = UPGRADES.filter((u) => !u.available || u.available())
+		for (let i = pool.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1))
+			;[pool[i], pool[j]] = [pool[j], pool[i]]
+		}
+		return pool.slice(0, 3)
+	}
+
+	// Queue the level-ups earned this step; open the modal on the first one.
+	const queueLevelUps = (n: number) => {
+		pendingLevelUps += n
+		if (!levelUpOpen) {
+			choices = rollChoices()
+			levelUpOpen = true
+		}
+	}
+
+	// Apply the pick, then present the next queued level-up (if any) or resume play.
+	const chooseUpgrade = (u: Upgrade) => {
+		if (!levelUpOpen || !u) return
+		u.apply()
+		pendingLevelUps--
+		if (pendingLevelUps > 0) choices = rollChoices()
+		else levelUpOpen = false
+	}
+
 	const onKeyDown = (e: KeyboardEvent) => {
+		// During a level-up pause, 1/2/3 pick an upgrade, Escape quits; swallow the rest.
+		if (levelUpOpen) {
+			if (e.code === 'Escape') stopRun()
+			else if (e.code === 'Digit1' || e.code === 'Numpad1') chooseUpgrade(choices[0])
+			else if (e.code === 'Digit2' || e.code === 'Numpad2') chooseUpgrade(choices[1])
+			else if (e.code === 'Digit3' || e.code === 'Numpad3') chooseUpgrade(choices[2])
+			return
+		}
 		// Escape bails out of a run / dismisses game-over; everything else is movement.
 		if (e.code === 'Escape') {
 			if (get(gameStatus) !== 'idle') stopRun()
@@ -77,7 +172,6 @@
 	// steps up, shrinking the spawn interval and raising the enemy count/speed
 	// (speed stays below the player's so they can always be outrun).
 	const WAVE_DURATION = 14000 // ms of play per wave
-	const INVULN_STEPS = 72 // ~1.2s of i-frames after the player is hit
 	const waveSpawnInterval = (w: number) => Math.max(520, 1400 - (w - 1) * 130)
 	const waveEnemyCap = (w: number) => Math.min(12, 6 + (w - 1))
 	const waveEnemySpeed = (w: number) => Math.min(4.2, 2.4 + (w - 1) * 0.22)
@@ -168,17 +262,25 @@
 		ctx.textAlign = 'center'
 		ctx.textBaseline = 'middle'
 		const hp = get(playerHp)
+		const cap = get(maxHp)
 		ctx.font = '22px sans-serif'
-		for (let i = 0; i < MAX_HP; i++) {
+		for (let i = 0; i < cap; i++) {
 			ctx.fillStyle = i < hp ? '#ef4444' : '#475569'
-			ctx.fillText('♥', cx + (i - (MAX_HP - 1) / 2) * 26, 34)
+			ctx.fillText('♥', cx + (i - (cap - 1) / 2) * 26, 34)
 		}
 		ctx.font = '600 15px ui-monospace, monospace'
 		ctx.fillStyle = '#cbd5e1'
-		ctx.fillText(`WAVE ${get(wave)}   ·   SCORE ${get(score)}`, cx, 62)
-		ctx.font = '600 13px ui-monospace, monospace'
-		ctx.fillStyle = '#34d399' // emerald-400 — the collectable currency
-		ctx.fillText(`XP ${get(xp)}`, cx, 82)
+		ctx.fillText(`WAVE ${get(wave)}   ·   LVL ${get(level)}   ·   SCORE ${get(score)}`, cx, 62)
+		// XP-to-next-level progress bar (emerald) — fills as gems are banked.
+		const barW = 160
+		const barH = 5
+		const bx = cx - barW / 2
+		const by = 78
+		const pct = Math.max(0, Math.min(1, get(levelXp) / get(levelXpNeeded)))
+		ctx.fillStyle = 'rgba(15, 23, 42, 0.7)'
+		ctx.fillRect(bx, by, barW, barH)
+		ctx.fillStyle = '#34d399'
+		ctx.fillRect(bx, by, barW * pct, barH)
 		ctx.restore()
 	}
 
@@ -236,7 +338,7 @@
 					left: enemy.pos.x
 				}
 				if (collision(enemyRect, projRect)) {
-					if (enemy.hit()) {
+					if (enemy.hit(projectile.damage)) {
 						score.update((s) => s + 1)
 						// Drop an XP gem where it fell; it tumbles to the floor under
 						// gravity, so the player must leave a safe perch to bank it.
@@ -255,7 +357,7 @@
 	const damagePlayer = () => {
 		const hp = get(playerHp) - 1
 		playerHp.set(hp)
-		invuln = INVULN_STEPS
+		invuln = invulnSteps
 		effectsStore.add(new Effect({ x: player.pos.x, y: player.pos.y + 28 }, 'smoke_12'))
 		if (hp <= 0) gameOver()
 	}
@@ -322,7 +424,8 @@
 		for (const gem of gems) {
 			const gemRect = { width: gem.width, height: gem.height, top: gem.pos.y, left: gem.pos.x }
 			if (collision(playerRect, gemRect)) {
-				xp.update((n) => n + gem.value)
+				const ups = addXp(gem.value * xpMul)
+				if (ups > 0) queueLevelUps(ups)
 				xpGemsStore.delete(gem)
 			}
 		}
@@ -336,14 +439,17 @@
 		if (canvasDirty) resizeCanvas()
 		if (platformsDirty) collectPlatforms()
 
-		const playing = get(gameStarted)
+		const playing = get(gameStatus) === 'playing'
 
-		// On the rising edge of a run, clear the field and any leftover bolts. The
-		// player keeps its current position — no teleport onto the pedestal.
+		// On the rising edge of a run, clear the field and reset upgrades. The player
+		// keeps its current position — no teleport onto the pedestal.
 		if (playing && !wasPlaying) {
 			enemiesStore.set([])
 			projectilesStore.set([])
 			xpGemsStore.set([])
+			resetUpgrades()
+			levelUpOpen = false
+			pendingLevelUps = 0
 			spawnTimer = 0
 			invuln = 0
 			waveTimer = 0
@@ -351,9 +457,17 @@
 		}
 		wasPlaying = playing
 
-		// Advance the wave on a timer, then spawn enemies at the current wave's
-		// rate/cap; clear the field once the game is stopped.
-		if (playing) {
+		// A run that ended (Escape/quit) with a pick still open drops the pick.
+		if (!playing && levelUpOpen) {
+			levelUpOpen = false
+			pendingLevelUps = 0
+		}
+		// Level-up pause: the sim freezes but the field is preserved (not cleared).
+		const paused = levelUpOpen
+
+		// Advance the wave on a timer, then spawn enemies at the current wave's rate/
+		// cap. Frozen while a pick is open; the field is cleared once truly stopped.
+		if (playing && !paused) {
 			waveTimer += frameTime
 			if (waveTimer >= WAVE_DURATION) {
 				waveTimer -= WAVE_DURATION
@@ -365,7 +479,7 @@
 				spawnFromBudget()
 				spawnTimer = 0
 			}
-		} else {
+		} else if (!playing) {
 			if ($enemies?.length) enemiesStore.set([])
 			if ($projectiles?.length) projectilesStore.set([])
 			if ($xpGems?.length) xpGemsStore.set([])
@@ -373,33 +487,38 @@
 			waveBanner = 0
 		}
 
-		// Advance physics in fixed steps, consuming the elapsed real time.
+		// Advance physics in fixed steps, consuming the elapsed real time. A level-up
+		// pause skips the updates entirely, freezing every entity in place.
 		accumulator += frameTime
 		while (accumulator >= FIXED_STEP) {
-			$projectiles?.forEach((projectile) => projectile.update(STEP_DELTA, platforms))
-			$xpGems?.forEach((gem) => gem.update(canvas, player, platforms, STEP_DELTA))
-			if (playing) $enemies?.forEach((enemy) => enemy.update(canvas, player, platforms, STEP_DELTA, $enemies ?? []))
-			player.update(canvas, keys, platforms, STEP_DELTA)
-			// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
-			const target = playing ? nearestEnemy() : null
-			player.aimAt(target)
-			if (playing) {
-				if (target) {
-					if (playerFireCooldown > 0) playerFireCooldown--
-					else {
-						player.shoot()
-						playerFireCooldown = PLAYER_FIRE_STEPS
+			if (!paused) {
+				$projectiles?.forEach((projectile) => projectile.update(STEP_DELTA, platforms))
+				$xpGems?.forEach((gem) => gem.update(canvas, player, platforms, STEP_DELTA, magnetRadius))
+				if (playing) $enemies?.forEach((enemy) => enemy.update(canvas, player, platforms, STEP_DELTA, $enemies ?? []))
+				player.update(canvas, keys, platforms, STEP_DELTA)
+				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
+				const target = playing ? nearestEnemy() : null
+				player.aimAt(target)
+				if (playing) {
+					if (target) {
+						if (playerFireCooldown > 0) playerFireCooldown--
+						else {
+							player.shoot()
+							playerFireCooldown = fireSteps
+						}
 					}
+					resolveHits()
+					resolveGemPickups()
+					if (invuln > 0) invuln--
+					resolvePlayerDamage()
+					resolveEnemyShots()
 				}
-				resolveHits()
-				resolveGemPickups()
-				if (invuln > 0) invuln--
-				resolvePlayerDamage()
-				resolveEnemyShots()
 			}
 			accumulator -= FIXED_STEP
 		}
-		const alpha = accumulator / FIXED_STEP // fractional progress toward the next step
+		// Freeze interpolation + sprite animation while paused so entities hold still.
+		const alpha = paused ? 1 : accumulator / FIXED_STEP
+		const animDelta = paused ? 0 : frameTime / 12
 
 		// Render once per frame, interpolating entities between their last two steps.
 		ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -415,11 +534,11 @@
 		}
 		for (const platform of platforms) platform.draw(ctx)
 		$xpGems?.forEach((gem) => gem.draw(ctx, alpha))
-		$enemies?.forEach((enemy) => enemy.draw(ctx, frameTime / 12, alpha))
+		$enemies?.forEach((enemy) => enemy.draw(ctx, animDelta, alpha))
 		$projectiles?.forEach((projectile) => projectile.draw(ctx, alpha))
-		// Blink the player while invulnerable after a hit.
-		if (invuln <= 0 || Math.floor(invuln / 6) % 2 === 0) {
-			player.draw(ctx, frameTime / 12, alpha)
+		// Blink the player while invulnerable after a hit (but always show it paused).
+		if (paused || invuln <= 0 || Math.floor(invuln / 6) % 2 === 0) {
+			player.draw(ctx, animDelta, alpha)
 		}
 		$effects?.forEach((effect: Effect) => effect.draw(ctx))
 
@@ -481,6 +600,31 @@
 	</div>
 {/if}
 
+{#if levelUpOpen}
+	<!-- Full-screen catcher (default pointer-events) so clicks land on the modal and
+	     not the Start/Stop hub behind it. Forces a pick before play resumes. -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
+		<div class="level-up text-center">
+			<div class="font-bauhaus text-2xl font-bold tracking-widest text-emerald-400">LEVEL UP</div>
+			<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">NIVEAU {$level}</div>
+			<div class="mt-4 flex flex-col gap-2">
+				{#each choices as choice, i (choice.id)}
+					<button class="upgrade" data-kind={choice.kind} onclick={() => chooseUpgrade(choice)}>
+						<span class="key">{i + 1}</span>
+						<span class="flex flex-col items-start">
+							<span class="name">{choice.name}</span>
+							<span class="desc">{choice.desc}</span>
+						</span>
+					</button>
+				{/each}
+			</div>
+			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+				Clic ou touches 1 · 2 · 3
+			</div>
+		</div>
+	</div>
+{/if}
+
 <svelte:window
 	onkeydown={onKeyDown}
 	onkeyup={(e) => keys.onkeyup(e, player)}
@@ -503,5 +647,77 @@
 		border: 1px solid rgb(51 65 85); /* slate-700 */
 		border-radius: 0.5rem;
 		box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+	}
+
+	.level-up {
+		width: min(90vw, 340px);
+		padding: 1.5rem 1.75rem;
+		background: rgb(15 23 42 / 0.94); /* slate-900 */
+		border: 1px solid rgb(51 65 85); /* slate-700 */
+		border-radius: 0.6rem;
+		box-shadow: 0 10px 40px rgb(0 0 0 / 0.55);
+	}
+	.upgrade {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		width: 100%;
+		padding: 0.6rem 0.8rem;
+		text-align: left;
+		border: 1px solid rgb(51 65 85); /* slate-700 */
+		border-radius: 0.45rem;
+		background: rgb(30 41 59 / 0.6); /* slate-800 */
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			transform 0.1s;
+	}
+	.upgrade:hover {
+		background: rgb(51 65 85 / 0.7);
+		transform: translateY(-1px);
+	}
+	.upgrade .key {
+		display: flex;
+		flex: none;
+		align-items: center;
+		justify-content: center;
+		width: 1.6rem;
+		height: 1.6rem;
+		border-radius: 0.35rem;
+		background: rgb(15 23 42 / 0.8); /* slate-900 */
+		font-family: ui-monospace, monospace;
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: rgb(226 232 240); /* slate-200 */
+	}
+	.upgrade .name {
+		font-family: Jura, sans-serif;
+		font-size: 0.9rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		color: rgb(226 232 240); /* slate-200 */
+	}
+	.upgrade .desc {
+		font-size: 0.72rem;
+		color: rgb(148 163 184); /* slate-400 */
+	}
+	/* Accent the badge + border by upgrade family. */
+	.upgrade[data-kind='atk'] {
+		border-color: rgb(248 113 113 / 0.5); /* red-400 */
+	}
+	.upgrade[data-kind='atk'] .key {
+		color: rgb(248 113 113);
+	}
+	.upgrade[data-kind='def'] {
+		border-color: rgb(96 165 250 / 0.5); /* blue-400 */
+	}
+	.upgrade[data-kind='def'] .key {
+		color: rgb(96 165 250);
+	}
+	.upgrade[data-kind='util'] {
+		border-color: rgb(52 211 153 / 0.5); /* emerald-400 */
+	}
+	.upgrade[data-kind='util'] .key {
+		color: rgb(52 211 153);
 	}
 </style>
