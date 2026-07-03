@@ -4,7 +4,9 @@
 	import { Player } from './platformer-logic/Player'
 	import { Enemy } from './platformer-logic/Enemy'
 	import { XpGem } from './platformer-logic/XpGem'
-	import { effects, projectiles, effectsStore, enemies, enemiesStore, projectilesStore, xpGems, xpGemsStore } from '$lib/stores'
+	import { Bomb } from './platformer-logic/Bomb'
+	import type { EnemyKind } from './platformer-logic/Enemy'
+	import { effects, projectiles, effectsStore, enemies, enemiesStore, projectilesStore, xpGems, xpGemsStore, bombs, bombsStore } from '$lib/stores'
 	import { Effect } from './platformer-logic/Effect'
 	import { collision } from './platformer-logic/utils'
 	import { keys } from './platformer-logic/controller'
@@ -50,8 +52,14 @@
 	// level-up upgrades below; resetUpgrades() restores the baseline on a fresh run.
 	const BASE_FIRE_STEPS = 20 // physics steps between shots (~3/s)
 	const BASE_INVULN = 72 // ~1.2s of i-frames after a hit
-	const BASE_MAGNET = 78 // XP-gem pickup radius (px)
+	const BASE_MAGNET = 48 // XP-gem pickup radius (px) — small, so the player must sweep the floor
 	const BASE_SPEED = 5 // player move speed
+	const BASE_SPREAD = 0.07 // base weapon inaccuracy (radians of random deviation per bolt)
+	// Caps so the snowball upgrades can't trivialise the game (the old build let a
+	// player stack 20 pinpoint projectiles and vacuum the whole map).
+	const MAX_MAGNET = 150 // hard cap on pickup radius
+	const MAX_PROJECTILES = 6 // hard cap on Multi-Shot
+	const MIN_FIRE_STEPS = 6 // hard floor on the fire cadence
 	let fireSteps = BASE_FIRE_STEPS
 	let invulnSteps = BASE_INVULN
 	let magnetRadius = BASE_MAGNET
@@ -65,6 +73,7 @@
 		player.speed = BASE_SPEED
 		player.projectileCount = 1
 		player.damage = 1
+		player.spread = BASE_SPREAD
 	}
 
 	// --- Level-up upgrades ----------------------------------------------------
@@ -77,27 +86,37 @@
 		desc: string
 		kind: UpgradeKind
 		apply: () => void
-		available?: () => boolean
+		available?: () => boolean // hard gate: hides the pick (cap reached / situational)
+		weight?: (lvl: number) => number // rarity: higher = commoner. Power spikes thin out with level.
 	}
 	const UPGRADES: Upgrade[] = [
-		{ id: 'rapid', name: 'Rapid Fire', desc: 'Cadence de tir +15%', kind: 'atk',
-			apply: () => (fireSteps = Math.max(4, Math.round(fireSteps * 0.85))) },
-		{ id: 'multi', name: 'Multi-Shot', desc: '+1 projectile par tir', kind: 'atk',
-			apply: () => player.projectileCount++ },
+		{ id: 'rapid', name: 'Rapid Fire', desc: 'Cadence de tir +18%', kind: 'atk',
+			apply: () => (fireSteps = Math.max(MIN_FIRE_STEPS, Math.round(fireSteps * 0.82))),
+			available: () => fireSteps > MIN_FIRE_STEPS, weight: () => 3 },
+		{ id: 'multi', name: 'Multi-Shot', desc: '+1 projectile (mais disperse plus)', kind: 'atk',
+			apply: () => player.projectileCount++,
+			available: () => player.projectileCount < MAX_PROJECTILES,
+			weight: (lvl) => Math.max(1, 3 - Math.floor(lvl / 3)) }, // rarer the higher you climb
 		{ id: 'power', name: 'Power Shot', desc: '+1 dégât par tir', kind: 'atk',
-			apply: () => player.damage++ },
+			apply: () => player.damage++, weight: () => 2 },
+		{ id: 'focus', name: 'Focus', desc: 'Précision accrue (tir plus serré)', kind: 'atk',
+			apply: () => (player.spread = Math.max(0.015, player.spread - 0.02)),
+			available: () => player.spread > 0.02, weight: () => 3 },
 		{ id: 'vitality', name: 'Vitality', desc: '+1 PV max (et soigne)', kind: 'def',
-			apply: () => { maxHp.update((m) => m + 1); playerHp.update((h) => h + 1) } },
+			apply: () => { maxHp.update((m) => m + 1); playerHp.update((h) => h + 1) },
+			weight: (lvl) => Math.max(1, 2 - Math.floor(lvl / 4)) },
 		{ id: 'bandage', name: 'Bandage', desc: 'Soin complet', kind: 'def',
-			apply: () => playerHp.set(get(maxHp)), available: () => get(playerHp) < get(maxHp) },
+			apply: () => playerHp.set(get(maxHp)), available: () => get(playerHp) < get(maxHp),
+			weight: () => (get(maxHp) - get(playerHp) >= 2 ? 4 : 2) }, // commoner when badly hurt
 		{ id: 'iron', name: 'Iron Skin', desc: 'Invincibilité +30%', kind: 'def',
-			apply: () => (invulnSteps = Math.round(invulnSteps * 1.3)) },
-		{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +40', kind: 'util',
-			apply: () => (magnetRadius += 40) },
+			apply: () => (invulnSteps = Math.round(invulnSteps * 1.3)), weight: () => 3 },
+		{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +34', kind: 'util',
+			apply: () => (magnetRadius = Math.min(MAX_MAGNET, magnetRadius + 34)),
+			available: () => magnetRadius < MAX_MAGNET, weight: () => 2 },
 		{ id: 'swift', name: 'Swift', desc: 'Vitesse de déplacement +', kind: 'util',
-			apply: () => (player.speed += 0.6) },
+			apply: () => (player.speed += 0.7), weight: () => 3 },
 		{ id: 'greed', name: 'Greed', desc: '+1 XP par gemme', kind: 'util',
-			apply: () => (xpMul += 1) }
+			apply: () => (xpMul += 1), weight: (lvl) => Math.max(1, 2 - Math.floor(lvl / 5)) }
 	]
 
 	// The level-up pause. gameStatus stays 'playing' (so the field isn't cleared);
@@ -105,15 +124,40 @@
 	let levelUpOpen = $state(false)
 	let choices = $state<Upgrade[]>([])
 	let pendingLevelUps = 0
+	const BASE_REROLLS = 3 // rerolls granted per run (DRG-style agency without a shop)
+	let rerolls = $state(0)
 
-	// Draw 3 distinct, currently-available upgrades at random.
+	// Draw 3 distinct available upgrades, weighted by rarity so power spikes show up
+	// less often (and thin out further as the level climbs). Weighted sampling
+	// without replacement.
 	const rollChoices = (): Upgrade[] => {
-		const pool = UPGRADES.filter((u) => !u.available || u.available())
-		for (let i = pool.length - 1; i > 0; i--) {
-			const j = Math.floor(Math.random() * (i + 1))
-			;[pool[i], pool[j]] = [pool[j], pool[i]]
+		const lvl = get(level)
+		const bag = UPGRADES.filter((u) => !u.available || u.available()).map((u) => ({
+			u,
+			w: Math.max(0.0001, u.weight ? u.weight(lvl) : 3)
+		}))
+		const picks: Upgrade[] = []
+		const n = Math.min(3, bag.length)
+		for (let k = 0; k < n; k++) {
+			let total = 0
+			for (const b of bag) total += b.w
+			let r = Math.random() * total
+			let idx = 0
+			for (; idx < bag.length - 1; idx++) {
+				r -= bag[idx].w
+				if (r <= 0) break
+			}
+			picks.push(bag[idx].u)
+			bag.splice(idx, 1)
 		}
-		return pool.slice(0, 3)
+		return picks
+	}
+
+	// Spend a reroll to redraw the current choices (no-op when none are left).
+	const reroll = () => {
+		if (!levelUpOpen || rerolls <= 0) return
+		rerolls--
+		choices = rollChoices()
 	}
 
 	// Queue the level-ups earned this step; open the modal on the first one.
@@ -135,12 +179,14 @@
 	}
 
 	const onKeyDown = (e: KeyboardEvent) => {
-		// During a level-up pause, 1/2/3 pick an upgrade, Escape quits; swallow the rest.
+		// During a level-up pause, 1/2/3 pick an upgrade, R rerolls, Escape quits;
+		// swallow the rest so movement keys don't leak into the frozen sim.
 		if (levelUpOpen) {
 			if (e.code === 'Escape') stopRun()
 			else if (e.code === 'Digit1' || e.code === 'Numpad1') chooseUpgrade(choices[0])
 			else if (e.code === 'Digit2' || e.code === 'Numpad2') chooseUpgrade(choices[1])
 			else if (e.code === 'Digit3' || e.code === 'Numpad3') chooseUpgrade(choices[2])
+			else if (e.code === 'KeyR') reroll()
 			return
 		}
 		// Escape bails out of a run / dismisses game-over; everything else is movement.
@@ -170,19 +216,30 @@
 	// --- Enemies & waves (mini-game) -----------------------------------------
 	// Difficulty escalates continuously: every WAVE_DURATION of play the wave
 	// steps up, shrinking the spawn interval and raising the enemy count/speed
-	// (speed stays below the player's so they can always be outrun).
+	// (chase speed stays below the player's so they can always be outrun).
 	const WAVE_DURATION = 14000 // ms of play per wave
-	const waveSpawnInterval = (w: number) => Math.max(520, 1400 - (w - 1) * 130)
-	const waveEnemyCap = (w: number) => Math.min(12, 6 + (w - 1))
+	const waveSpawnInterval = (w: number) => Math.max(480, 1400 - (w - 1) * 130)
+	const waveEnemyCap = (w: number) => Math.min(14, 6 + (w - 1))
 	const waveEnemySpeed = (w: number) => Math.min(4.2, 2.4 + (w - 1) * 0.22)
-	// Guaranteed flyers in the field (from wave 1) so a perched player is always
-	// hunted from the air, even when the ground is clogged with unreachable bikers.
+	// Pressure floors: guaranteed counts of each threat vector so no play style
+	// stays safe — flyers hunt perches, shooters pepper, turrets spray, bombers
+	// deny the ground. Each type joins a few waves apart so variety ramps in.
 	const waveFlyerFloor = (w: number) => Math.min(4, 1 + Math.floor((w - 1) / 2))
-	// Ranged gunners join from wave 2 and pepper perches out of melee reach.
 	const waveShooterFloor = (w: number) => (w < 2 ? 0 : Math.min(3, 1 + Math.floor((w - 2) / 2)))
-	// Enemy toughness: bikers 3 HP, flyers/shooters 2, +1 for every 3 waves cleared.
-	const waveEnemyHealth = (kind: 'biker' | 'flyer' | 'shooter', w: number) =>
-		(kind === 'biker' ? 3 : 2) + Math.floor((w - 1) / 3)
+	const waveTurretFloor = (w: number) => (w < 3 ? 0 : Math.min(2, 1 + Math.floor((w - 3) / 3)))
+	const waveBomberFloor = (w: number) => (w < 4 ? 0 : Math.min(2, 1 + Math.floor((w - 4) / 3)))
+	// Odds a ground slot is a dashing charger rather than a plain biker (grows with wave).
+	const chargerChance = (w: number) => (w < 2 ? 0 : Math.min(0.5, (w - 1) * 0.08))
+	// Toughness: per-kind base HP + 1 for every 3 waves cleared.
+	const kindBaseHealth: Record<EnemyKind, number> = {
+		biker: 3, flyer: 2, shooter: 2, charger: 2, turret: 6, bomber: 7, brute: 12
+	}
+	const waveEnemyHealth = (kind: EnemyKind, w: number) =>
+		kindBaseHealth[kind] + Math.floor((w - 1) / 3)
+	// Contact/shot/blast damage: a gentle ramp — most hits stay 1 until later waves,
+	// brutes/bombers start at 2. Keeps it "nervous but survivable".
+	const waveContactDamage = (kind: EnemyKind, w: number) =>
+		(kind === 'brute' || kind === 'bomber' ? 2 : 1) + Math.floor((w - 1) / 5)
 	let spawnTimer = 0
 	let spawnSide = 0
 	let invuln = 0
@@ -192,41 +249,61 @@
 	const WAVE_BANNER_MS = 1400 // how long the "WAVE N" flash shows on advance
 	let waveBanner = 0 // ms remaining on the current banner
 
-	const spawnEnemy = (kind: 'biker' | 'flyer' | 'shooter') => {
+	const spawnEnemy = (kind: EnemyKind) => {
 		const w = get(wave)
 		// Alternate the side each enemy walks/flies in from.
 		const fromLeft = spawnSide++ % 2 === 0
-		const x = fromLeft ? -60 : canvas.width + 60
-		// Flyers enter higher up; ground units (biker/shooter) walk in at floor level.
-		const y = kind === 'flyer' ? canvas.height * 0.35 : canvas.height - 80
-		// Flyers a touch slower than bikers; shooters are near-stationary gunners.
+		// The turret is anchored (no walk-in), so it deploys directly on-screen;
+		// everyone else enters from off the nearest side.
+		const x =
+			kind === 'turret'
+				? canvas.width * (0.15 + Math.random() * 0.7)
+				: fromLeft
+					? -60
+					: canvas.width + 60
+		// Flyers and bombers enter high; ground units walk in at floor level.
+		const y = kind === 'flyer' || kind === 'bomber' ? canvas.height * 0.32 : canvas.height - 80
+		// Chase kinds scale their speed with the wave; the anchored/patrol kinds are fixed.
 		const speed =
-			kind === 'flyer' ? waveEnemySpeed(w) * 0.8 : kind === 'shooter' ? 1.6 : waveEnemySpeed(w)
-		enemiesStore.add(new Enemy({ x, y }, { kind, speed, health: waveEnemyHealth(kind, w) }))
+			kind === 'flyer' ? waveEnemySpeed(w) * 0.8
+			: kind === 'shooter' ? 1.6
+			: kind === 'turret' ? 0
+			: kind === 'bomber' ? 1.4
+			: kind === 'charger' ? waveEnemySpeed(w) * 1.05
+			: kind === 'brute' ? 1.3
+			: waveEnemySpeed(w)
+		enemiesStore.add(
+			new Enemy(
+				{ x, y },
+				{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
+			)
+		)
 	}
 
-	// Decide what to spawn on a tick: keep the field topped up to the wave cap and
-	// always maintain the flyer floor. If the field is already full of bikers that
-	// a camping player has clogged (they can't reach a perch), retire the one stuck
-	// furthest below the player and swap in a flyer instead — no perch stays safe.
+	// Decide what to spawn on a tick: keep the field topped up to the wave cap while
+	// maintaining every pressure floor. If the field is capped and a camping player
+	// has clogged it with unreachable ground units, retire the one stuck furthest
+	// below the player and swap in the missing pressure type — no spot stays safe.
 	const spawnFromBudget = () => {
 		const w = get(wave)
 		const list = get(enemies)
-		const flyers = list.filter((e) => e.kind === 'flyer').length
-		const shooters = list.filter((e) => e.kind === 'shooter').length
-		// Keep air and ranged pressure topped up first, then fill with bikers.
-		const wanted: 'flyer' | 'shooter' | null =
-			flyers < waveFlyerFloor(w) ? 'flyer' : shooters < waveShooterFloor(w) ? 'shooter' : null
+		const count = (k: EnemyKind) => list.filter((e) => e.kind === k).length
+		const pressures: { kind: EnemyKind; floor: number }[] = [
+			{ kind: 'flyer', floor: waveFlyerFloor(w) },
+			{ kind: 'shooter', floor: waveShooterFloor(w) },
+			{ kind: 'turret', floor: waveTurretFloor(w) },
+			{ kind: 'bomber', floor: waveBomberFloor(w) }
+		]
+		const missing = pressures.find((p) => count(p.kind) < p.floor)?.kind ?? null
+		const groundKind: EnemyKind = Math.random() < chargerChance(w) ? 'charger' : 'biker'
+
 		if (list.length < waveEnemyCap(w)) {
-			spawnEnemy(wanted ?? 'biker')
-		} else if (wanted) {
-			// Field capped but missing air/ranged pressure (a camping player has
-			// clogged it with unreachable bikers): retire the biker stuck furthest
-			// below the player and swap in the type we need.
+			spawnEnemy(missing ?? groundKind)
+		} else if (missing) {
 			let stuck: Enemy | null = null
 			let worst = -Infinity
 			for (const e of list) {
-				if (e.kind !== 'biker') continue
+				if (e.kind !== 'biker' && e.kind !== 'charger') continue
 				const below = e.pos.y - player.pos.y
 				if (below > worst) {
 					worst = below
@@ -235,7 +312,7 @@
 			}
 			if (stuck) {
 				enemiesStore.delete(stuck)
-				spawnEnemy(wanted)
+				spawnEnemy(missing)
 			}
 		}
 	}
@@ -341,9 +418,13 @@
 					if (enemy.hit(projectile.damage)) {
 						score.update((s) => s + 1)
 						// Drop an XP gem where it fell; it tumbles to the floor under
-						// gravity, so the player must leave a safe perch to bank it.
+						// gravity, so the player must leave a safe perch to bank it. Tough
+						// enemies (turrets/bombers/brutes) drop a fatter gem — focus pays.
 						xpGemsStore.add(
-							new XpGem({ x: enemy.pos.x + enemy.width / 2 - 7, y: enemy.pos.y + enemy.height / 2 })
+							new XpGem(
+								{ x: enemy.pos.x + enemy.width / 2 - 7, y: enemy.pos.y + enemy.height / 2 },
+								{ value: enemy.xpValue }
+							)
 						)
 					}
 					projectilesStore.delete(projectile)
@@ -353,9 +434,10 @@
 		}
 	}
 
-	// One point of damage + i-frames; 0 HP ends the run. Shared by contact and shots.
-	const damagePlayer = () => {
-		const hp = get(playerHp) - 1
+	// Take `amount` damage + i-frames; 0 HP ends the run. Shared by contact, shots
+	// and bomb blasts (each passes its own scaled damage).
+	const damagePlayer = (amount = 1) => {
+		const hp = get(playerHp) - amount
 		playerHp.set(hp)
 		invuln = invulnSteps
 		effectsStore.add(new Effect({ x: player.pos.x, y: player.pos.y + 28 }, 'smoke_12'))
@@ -379,7 +461,7 @@
 				left: enemy.pos.x
 			}
 			if (collision(playerRect, enemyRect)) {
-				damagePlayer()
+				damagePlayer(enemy.damage)
 				break
 			}
 		}
@@ -403,10 +485,24 @@
 				left: projectile.pos.x - projectile.width / 2
 			}
 			if (collision(playerRect, projRect)) {
-				damagePlayer()
+				damagePlayer(projectile.damage)
 				projectilesStore.delete(projectile)
 				break
 			}
+		}
+	}
+
+	// A detonating bomb hits the player once (a single AoE check on the first step
+	// of its explosion). Mark it resolved even during i-frames so an old blast can
+	// never carry over and hit after the i-frames lapse.
+	const resolveBombs = () => {
+		for (const bomb of $bombs ?? []) {
+			if (bomb.state !== 'exploding' || bomb.damageApplied) continue
+			bomb.damageApplied = true
+			if (invuln > 0) continue
+			const dx = player.pos.x + player.width / 2 - bomb.centerX
+			const dy = player.pos.y + player.height / 2 - bomb.centerY
+			if (Math.hypot(dx, dy) <= bomb.blastRadius) damagePlayer(bomb.damage)
 		}
 	}
 
@@ -447,7 +543,9 @@
 			enemiesStore.set([])
 			projectilesStore.set([])
 			xpGemsStore.set([])
+			bombsStore.set([])
 			resetUpgrades()
+			rerolls = BASE_REROLLS
 			levelUpOpen = false
 			pendingLevelUps = 0
 			spawnTimer = 0
@@ -473,6 +571,9 @@
 				waveTimer -= WAVE_DURATION
 				wave.update((w) => w + 1)
 				waveBanner = WAVE_BANNER_MS
+				// An elite brute anchors each new wave from wave 3 (at most one alive):
+				// a slow bullet-sponge that drops a fat gem and rewards focus fire.
+				if (get(wave) >= 3 && !get(enemies).some((e) => e.kind === 'brute')) spawnEnemy('brute')
 			}
 			spawnTimer += frameTime
 			if (spawnTimer >= waveSpawnInterval(get(wave))) {
@@ -483,6 +584,7 @@
 			if ($enemies?.length) enemiesStore.set([])
 			if ($projectiles?.length) projectilesStore.set([])
 			if ($xpGems?.length) xpGemsStore.set([])
+			if ($bombs?.length) bombsStore.set([])
 			invuln = 0
 			waveBanner = 0
 		}
@@ -495,6 +597,7 @@
 				$projectiles?.forEach((projectile) => projectile.update(STEP_DELTA, platforms))
 				$xpGems?.forEach((gem) => gem.update(canvas, player, platforms, STEP_DELTA, magnetRadius))
 				if (playing) $enemies?.forEach((enemy) => enemy.update(canvas, player, platforms, STEP_DELTA, $enemies ?? []))
+				if (playing) $bombs?.forEach((bomb) => bomb.update(canvas, platforms, STEP_DELTA))
 				player.update(canvas, keys, platforms, STEP_DELTA)
 				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
 				const target = playing ? nearestEnemy() : null
@@ -512,6 +615,7 @@
 					if (invuln > 0) invuln--
 					resolvePlayerDamage()
 					resolveEnemyShots()
+					resolveBombs()
 				}
 			}
 			accumulator -= FIXED_STEP
@@ -535,6 +639,7 @@
 		for (const platform of platforms) platform.draw(ctx)
 		$xpGems?.forEach((gem) => gem.draw(ctx, alpha))
 		$enemies?.forEach((enemy) => enemy.draw(ctx, animDelta, alpha))
+		$bombs?.forEach((bomb) => bomb.draw(ctx, alpha))
 		$projectiles?.forEach((projectile) => projectile.draw(ctx, alpha))
 		// Blink the player while invulnerable after a hit (but always show it paused).
 		if (paused || invuln <= 0 || Math.floor(invuln / 6) % 2 === 0) {
@@ -568,6 +673,7 @@
 		enemiesStore.set([])
 		projectilesStore.set([])
 		xpGemsStore.set([])
+		bombsStore.set([])
 	})
 </script>
 
@@ -618,8 +724,11 @@
 					</button>
 				{/each}
 			</div>
+			<button class="reroll" onclick={reroll} disabled={rerolls <= 0} aria-label="Relancer les choix">
+				↻ Relancer <span class="reroll-count">{rerolls}</span>
+			</button>
 			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
-				Clic ou touches 1 · 2 · 3
+				Clic ou touches 1 · 2 · 3 · R relance
 			</div>
 		</div>
 	</div>
@@ -719,5 +828,35 @@
 	}
 	.upgrade[data-kind='util'] .key {
 		color: rgb(52 211 153);
+	}
+	.reroll {
+		margin-top: 0.75rem;
+		width: 100%;
+		padding: 0.4rem 0.8rem;
+		border: 1px dashed rgb(71 85 105); /* slate-600 */
+		border-radius: 0.45rem;
+		background: rgb(30 41 59 / 0.4); /* slate-800 */
+		font-family: ui-monospace, monospace;
+		font-size: 0.75rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgb(148 163 184); /* slate-400 */
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			color 0.15s;
+	}
+	.reroll:hover:not(:disabled) {
+		border-color: rgb(148 163 184); /* slate-400 */
+		background: rgb(51 65 85 / 0.6);
+		color: rgb(226 232 240); /* slate-200 */
+	}
+	.reroll:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.reroll-count {
+		color: rgb(226 232 240); /* slate-200 */
+		font-weight: 700;
 	}
 </style>

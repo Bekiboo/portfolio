@@ -25,8 +25,11 @@ export const wave = writable(1)
 export const xp = writable(0)
 export const level = writable(1)
 export const levelXp = writable(0)
-// XP to advance from the given level to the next — a gentle linear ramp.
-export const levelReq = (lvl: number) => 3 + (lvl - 1) * 2
+// XP to advance from the given level to the next. A steep geometric ramp on
+// purpose: level-ups pause the fight, so they must be rare and meaningful (~one
+// every 30-45s) rather than a constant interruption. L1→2 needs 8, then ×1.4
+// each level (8, 11, 16, 22, 31, 43, 60…).
+export const levelReq = (lvl: number) => Math.round(8 * Math.pow(1.4, lvl - 1))
 export const levelXpNeeded = writable(levelReq(1))
 
 // Bank `value` XP; returns how many level-ups it triggered (0 if none). The game

@@ -24,6 +24,7 @@ export class Player {
 	angle = 0
 	projectileCount = 1 // bolts per shot (Multi-Shot upgrade)
 	damage = 1 // damage per bolt (Power Shot upgrade)
+	spread = 0.07 // base weapon inaccuracy: ± radians of random deviation per bolt (Focus lowers it)
 	isFalling = false
 	jumpAvailable = 2
 	status = 'idle'
@@ -161,11 +162,16 @@ export class Player {
 		const weaponLength = 60 // distance from the character's centre to the muzzle
 		const cx = this.pos.x + this.width / 2
 		const cy = this.pos.y + this.height / 2
-		// Fan the bolts around the aim angle when Multi-Shot is stacked.
-		const spread = 0.18 // radians between adjacent bolts
-		const base = this.angle - (spread * (this.projectileCount - 1)) / 2
-		for (let i = 0; i < this.projectileCount; i++) {
-			const a = base + spread * i
+		const n = this.projectileCount
+		// Bolts fan out in a cone around the aim, and each one also deviates
+		// randomly — so accuracy is a real cost. Stacking Multi-Shot widens the
+		// random jitter, turning the weapon into a short-range spray instead of a
+		// wall of pinpoint lasers (which is what made the old version trivial).
+		const coneStep = 0.15 // radians between adjacent bolts in the fan
+		const jitter = this.spread + 0.02 * (n - 1) // ± random deviation, grows with bolt count
+		const base = this.angle - (coneStep * (n - 1)) / 2
+		for (let i = 0; i < n; i++) {
+			const a = base + coneStep * i + (Math.random() - 0.5) * 2 * jitter
 			projectilesStore.add(
 				new Projectile(
 					{ x: cx + Math.cos(a) * weaponLength, y: cy + Math.sin(a) * weaponLength },

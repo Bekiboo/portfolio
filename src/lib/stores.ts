@@ -3,6 +3,7 @@ import type { Effect } from '../routes/platformer-logic/Effect'
 import type { Projectile } from '../routes/platformer-logic/Projectile'
 import type { Enemy } from '../routes/platformer-logic/Enemy'
 import type { XpGem } from '../routes/platformer-logic/XpGem'
+import type { Bomb } from '../routes/platformer-logic/Bomb'
 
 export const effects = writable<Effect[]>([])
 
@@ -50,6 +51,16 @@ export const xpGemsStore = {
 	update: (updateFn: (current: XpGem[]) => XpGem[]) => xpGems.update(updateFn),
 	add: (gem: XpGem) => xpGems.update((current) => [...current, gem]),
 	delete: (toRemove: XpGem) => xpGems.update((current) => current.filter((g) => g !== toRemove))
+}
+
+export const bombs = writable<Bomb[]>([])
+
+export const bombsStore = {
+	subscribe: bombs.subscribe,
+	set: (value: Bomb[]) => bombs.set(value),
+	update: (updateFn: (current: Bomb[]) => Bomb[]) => bombs.update(updateFn),
+	add: (bomb: Bomb) => bombs.update((current) => [...current, bomb]),
+	delete: (toRemove: Bomb) => bombs.update((current) => current.filter((b) => b !== toRemove))
 }
 
 export const platforms = writable(null)
