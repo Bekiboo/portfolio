@@ -22,7 +22,6 @@
 
 <div
 	class="relative min-h-screen text-slate-200 bg-linear-to-br from-slate-950 via-50% bg-opacity-50 via-slate-900 to-[#330a0a]"
-	class:select-none={windowWidth > 1024}
 >
 	{@render children?.()}
 	{#if windowWidth > 1024 && GameWrapper}

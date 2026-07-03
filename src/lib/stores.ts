@@ -1,6 +1,8 @@
 import { writable, type Writable } from 'svelte/store'
 import type { Effect } from '../routes/platformer-logic/Effect'
 import type { Projectile } from '../routes/platformer-logic/Projectile'
+import type { Enemy } from '../routes/platformer-logic/Enemy'
+import type { XpGem } from '../routes/platformer-logic/XpGem'
 
 export const effects = writable<Effect[]>([])
 
@@ -28,6 +30,26 @@ export const projectilesStore = {
 		projectiles.update((currentProjectiles) =>
 			currentProjectiles.filter((projectile) => projectile !== animationToRemove)
 		)
+}
+
+export const enemies = writable<Enemy[]>([])
+
+export const enemiesStore = {
+	subscribe: enemies.subscribe,
+	set: (value: Enemy[]) => enemies.set(value),
+	update: (updateFn: (current: Enemy[]) => Enemy[]) => enemies.update(updateFn),
+	add: (enemy: Enemy) => enemies.update((current) => [...current, enemy]),
+	delete: (toRemove: Enemy) => enemies.update((current) => current.filter((e) => e !== toRemove))
+}
+
+export const xpGems = writable<XpGem[]>([])
+
+export const xpGemsStore = {
+	subscribe: xpGems.subscribe,
+	set: (value: XpGem[]) => xpGems.set(value),
+	update: (updateFn: (current: XpGem[]) => XpGem[]) => xpGems.update(updateFn),
+	add: (gem: XpGem) => xpGems.update((current) => [...current, gem]),
+	delete: (toRemove: XpGem) => xpGems.update((current) => current.filter((g) => g !== toRemove))
 }
 
 export const platforms = writable(null)

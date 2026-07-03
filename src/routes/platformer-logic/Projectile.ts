@@ -15,8 +15,14 @@ export class Projectile {
 	ticksPerFrame!: number
 	ticksCount = 0
 	sprite!: string
+	hostile = false // enemy shot (damages the player) vs player bolt (damages enemies)
 
-	constructor(pos: { x: number; y: number }, angle: number, sprite: string) {
+	constructor(
+		pos: { x: number; y: number },
+		angle: number,
+		sprite: string,
+		opts: { hostile?: boolean; speed?: number } = {}
+	) {
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
 		this.image = getSprite('projectile', sprite).img
@@ -24,8 +30,14 @@ export class Projectile {
 		this.maxFrame = getSprite('projectile', sprite).frames || 0
 		this.height = getSprite('projectile', sprite).height || 80
 		this.width = getSprite('projectile', sprite).width || 48
-		this.speed = 12
+		this.speed = opts.speed ?? 12
 		this.angle = angle
+		this.hostile = opts.hostile ?? false
+		// Enemy shots are drawn as a small orb, so give them a compact square hitbox.
+		if (this.hostile) {
+			this.width = 12
+			this.height = 12
+		}
 		if (this.frame > this.maxFrame) {
 			this.frame = 0
 		}
@@ -48,6 +60,20 @@ export class Projectile {
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
 		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+
+		// Enemy shots: a small glowing orb, visually distinct from the player's bolts.
+		if (this.hostile) {
+			ctx.save()
+			ctx.fillStyle = '#fb923c' // orange-400
+			ctx.shadowColor = '#f97316' // orange-500 glow
+			ctx.shadowBlur = 8
+			ctx.beginPath()
+			ctx.arc(x, y, 5, 0, Math.PI * 2)
+			ctx.fill()
+			ctx.restore()
+			return
+		}
+
 		ctx.save()
 		ctx.translate(x, y)
 		ctx.rotate(this.angle)

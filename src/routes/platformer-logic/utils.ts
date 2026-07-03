@@ -1,10 +1,10 @@
-import type { Platform } from './Platform'
 import sprites from './spritesData'
 
-export const collision = (
-	rect1: { width: number; height: number; top: number; left: number },
-	rect2: Platform
-) => {
+type Rect = { width: number; height: number; top: number; left: number }
+
+// Generic AABB overlap test. Works for any two rectangles — platforms, entity
+// hitboxes, projectiles — which is what lets entity↔entity collisions reuse it.
+export const collision = (rect1: Rect, rect2: Rect) => {
 	if (rect1.left >= rect2.left + rect2.width) return false
 	if (rect1.left + rect1.width <= rect2.left) return false
 	if (rect1.top >= rect2.top + rect2.height) return false

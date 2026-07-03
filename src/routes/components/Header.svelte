@@ -1,14 +1,23 @@
 <script lang="ts">
-	import { IconBrandGithub, IconBrandLinkedin, IconMail } from '@tabler/icons-svelte'
-	import Button from './Button.svelte'
+	import {
+		IconBrandGithub,
+		IconBrandLinkedin,
+		IconMail,
+		IconCopy,
+		IconCheck
+	} from '@tabler/icons-svelte'
 	import LanguageSwitcher from './LanguageSwitcher.svelte'
 	import { translations } from '$lib/i18n/store'
 
 	const email = 'julien.connault@gmail.com'
 
+	let copied = $state(false)
+	let copiedTimeout: ReturnType<typeof setTimeout> | undefined
 	const copyEmail = () => {
 		navigator.clipboard.writeText(email)
-		// alert(`Copied ${email} to clipboard`)
+		copied = true
+		clearTimeout(copiedTimeout)
+		copiedTimeout = setTimeout(() => (copied = false), 1500)
 	}
 </script>
 
@@ -24,8 +33,6 @@
 <p class="max-w-xs mt-4 mb-8 leading-normal text-slate-400">
 	{$translations.header?.description || 'Full-Stack Engineer...'}
 </p>
-
-<button data-colliding onclick={copyEmail}><Button text={$translations.header?.copyEmail || 'Copy Email'} classes="uppercase" /></button>
 
 <ul class="flex items-center mt-8 ml-1" aria-label="Social media">
 	<li class="mr-5">
@@ -55,7 +62,20 @@
 		</a>
 	</li>
 </ul>
-<span class="mt-2 font-thin">Email: {email}</span>
+<button
+	onclick={copyEmail}
+	class="group mt-2 inline-flex items-center gap-1.5 font-thin text-slate-400 transition hover:text-blue-400"
+	aria-label={copied ? 'Email copied to clipboard' : `Copy email address ${email}`}
+>
+	<span>{email}</span>
+	{#if copied}
+		<span class="inline-flex text-blue-400"><IconCheck size={16} stroke={1.5} /></span>
+	{:else}
+		<span class="inline-flex opacity-60 transition group-hover:opacity-100"
+			><IconCopy size={16} stroke={1.5} /></span
+		>
+	{/if}
+</button>
 
 <div class="mt-4">
 	<LanguageSwitcher />

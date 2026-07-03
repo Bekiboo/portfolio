@@ -39,13 +39,7 @@ export class Player {
 		}
 	}
 
-	update(
-		canvas: HTMLCanvasElement,
-		keys: KeyState,
-		mouse: { x: number; y: number },
-		platforms: Platform[],
-		deltaTime: number
-	) {
+	update(canvas: HTMLCanvasElement, keys: KeyState, platforms: Platform[], deltaTime: number) {
 		// Snapshot the pre-step position so draw() can interpolate between steps.
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
@@ -61,14 +55,19 @@ export class Player {
 		if (this.velocity.x != 0) this.velocity.x = 0 // reset velocity
 
 		this.#handleKeys(keys)
+	}
 
-		// function to get angle between two points
-		const baseAngle = Math.atan2(
-			mouse.y - this.pos.y - this.height / 2,
-			mouse.x - this.pos.x - this.width / 2
+	// Auto-aim: point the weapon at a target's centre, or straight ahead in the
+	// facing direction when there's none. Replaces mouse aiming.
+	aimAt(target: { pos: { x: number; y: number }; width: number; height: number } | null) {
+		if (!target) {
+			this.angle = this.direction === 'left' ? Math.PI : 0
+			return
+		}
+		this.angle = Math.atan2(
+			target.pos.y + target.height / 2 - (this.pos.y + this.height / 2),
+			target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		)
-
-		this.angle = baseAngle
 	}
 
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {

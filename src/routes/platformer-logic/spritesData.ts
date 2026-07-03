@@ -29,6 +29,12 @@ const sprites: SpriteData = {
 		punch_2: { frames: 8, speed: 4, img: loadImage('/sprites/Characters/Punk/Attack2.png') },
 		run_attack: { frames: 6, img: loadImage('/sprites/Characters/Punk/Run_attack.png') }
 	},
+	biker: {
+		run: { frames: 6, img: loadImage('/sprites/Characters/Biker/Run.png') }
+	},
+	cyborg: {
+		run: { frames: 6, img: loadImage('/sprites/Characters/Cyborg/Run.png') }
+	},
 	effect: {
 		smoke_12: { frames: 4, speed: 5, img: loadImage('/sprites/Effects/Smoke/12.png') }
 	},
