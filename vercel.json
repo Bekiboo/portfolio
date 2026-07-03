@@ -1,4 +1,5 @@
 {
 	"$schema": "https://openapi.vercel.sh/vercel.json",
-	"installCommand": "pnpm install --ignore-workspace --no-frozen-lockfile"
+	"installCommand": "pnpm install --ignore-workspace --no-frozen-lockfile",
+	"buildCommand": "pnpm --ignore-workspace run build"
 }
