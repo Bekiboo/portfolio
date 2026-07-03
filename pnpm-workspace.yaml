@@ -1,5 +1,8 @@
-# Native deps allowed to run install/build scripts (pnpm >= 10 blocks these by default).
-# @tailwindcss/oxide + esbuild ship prebuilt binaries and need their postinstall.
+# Native deps allowed to run install/build scripts (pnpm >= 10 blocks these by
+# default). @tailwindcss/oxide + esbuild ship prebuilt binaries and need their
+# postinstall. Read by local pnpm (>= 10). Vercel runs pnpm 9 with
+# `--ignore-workspace` (see vercel.json): pnpm 9 doesn't block build scripts and
+# would otherwise reject this config-only file ("packages field missing or empty").
 onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - esbuild
