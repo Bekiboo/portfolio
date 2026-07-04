@@ -374,6 +374,8 @@ export class GameWorld {
 			left: this.player.pos.x
 		}
 		for (const enemy of enemiesStore.list) {
+			// Some kinds (the turret) are harmless to touch — only their bolts bite.
+			if (ENEMY_TYPES[enemy.kind].contactDamage === false) continue
 			const enemyRect = {
 				width: enemy.width,
 				height: enemy.height,

@@ -1,4 +1,4 @@
-import { collision, getSprite } from './utils'
+import { collision, getSprite, hasSprite } from './utils'
 import { effectsStore, enemiesStore, projectilesStore, bombsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import { Projectile } from './Projectile'
@@ -15,7 +15,18 @@ const SEPARATION_GAP = 34 // enemies closer than this get pushed apart so they d
 const SEPARATION_PUSH = 0.6 // how hard overlapping neighbours shove each other per step
 const SHOOT_MIN = 180 // a shooter backs off if the player gets closer than this
 const SHOOT_MAX = 340 // ...and closes in if the player is farther than this
-const TURRET_BOLTS = 8 // bolts per turret radial burst
+// Rolling turret: trundles a short step, stops, telegraphs, then fires a directional fan.
+const TURRET_ROLL_SPEED = 0.7 // px/step it trundles at (slow)
+const TURRET_STEP = 64 // px advanced per jerky step
+const TURRET_MARGIN = 44 // keep this far from the canvas edges when stopping
+const TURRET_AIM_STEPS = 40 // stop-and-telegraph duration before a burst
+const TURRET_AIM_FAST = 3 // idle ticksPerFrame during the 2nd half of the telegraph (sped-up = the tell)
+const TURRET_FIRE_STEPS = 24 // hold on the recoil/attack frames after firing
+const TURRET_FLIP_CHANCE = 0.28 // chance to turn around after a burst
+const TURRET_BOLTS: number = 4 // bolts per directional fan
+const TURRET_SPREAD = 0.55 // half-arc of the fan (rad)
+const TURRET_BOLT_SPEED = 5
+const DRONE_ATTACK_STEPS = 22 // how long the drone holds its bomb-drop frames after a release
 const CHARGE_COOLDOWN = 150 // charger: steps between dashes
 const CHARGE_WIND = 16 // charger: telegraph wind-up before a dash
 const CHARGE_DASH = 16 // charger: dash duration
@@ -25,7 +36,7 @@ const FRAME_H = 80
 
 // Seven enemy flavours sharing one body, all defined by data in enemyTypes.ts.
 // Movement differs per `behavior`; drawing, hits and animation are shared. (Non-biker
-// kinds share the cyborg sprite for now — a placeholder distinguished by size + aura.)
+// kinds share the cyborg sprite for now — a placeholder distinguished by size.)
 export class Enemy {
 	kind: EnemyKind
 	behavior: Behavior
@@ -36,8 +47,6 @@ export class Enemy {
 	height: number
 	width: number
 	spriteScale: number
-	accent: string
-	glow: boolean
 	separates: boolean // pushed apart from crowding neighbours?
 	separatesVertically: boolean // spread on the Y axis too (flyers)?
 	fireInterval: number // steps between shots/drops (0 for non-firing kinds)
@@ -59,6 +68,17 @@ export class Enemy {
 	dashTimer = 0
 	dashCd = 0
 	dashDir = 1
+	// Sprite framing/anchoring (see enemyTypes: character sheets vs 48×48 gadget sheets).
+	anchor: 'topLeft' | 'foot' | 'center' = 'topLeft'
+	frameW = FRAME_W // source-frame size of the *current* animation
+	frameH = FRAME_H
+	currentAnim = '' // active animation key (gadget kinds switch between idle/walk/attack)
+	// Rolling-turret state machine
+	turretState: 'roll' | 'aim' | 'fire' = 'roll'
+	turretTimer = 0
+	turretDir = 0 // cannon facing / roll direction (+1 right, −1 left; 0 = uninitialised)
+	turretTargetX = 0
+	attackAnim = 0 // frames left showing a gadget's 'attack' animation (drone bomb-drop)
 
 	constructor(
 		pos: { x: number; y: number },
@@ -68,15 +88,19 @@ export class Enemy {
 		const t = ENEMY_TYPES[this.kind]
 		this.behavior = t.behavior
 		this.character = t.sprite
-		const sprite = getSprite(this.character, 'run')
+		this.anchor = t.spriteAnchor ?? 'topLeft'
+		// Character sheets animate on 'run'; gadget sheets (turret/drone) have no 'run'
+		// and start idle, switching animations from their behaviour.
+		this.currentAnim = hasSprite(this.character, 'run') ? 'run' : 'idle'
+		const sprite = getSprite(this.character, this.currentAnim)
 		this.image = sprite.img
 		this.ticksPerFrame = sprite.speed || 5
 		this.maxFrame = sprite.frames ?? 0
+		this.frameW = sprite.width
+		this.frameH = sprite.height
 		this.width = t.width
 		this.height = t.height
 		this.spriteScale = t.spriteScale
-		this.accent = t.accent
-		this.glow = t.glow
 		this.separates = t.separates
 		this.separatesVertically = t.separatesVertically
 		this.fireInterval = t.fireInterval ?? 0
@@ -112,7 +136,7 @@ export class Enemy {
 			case 'flyer': this.#updateFlyer(canvas, target, deltaTime); break
 			case 'shooter': this.#updateShooter(canvas, target, platforms, deltaTime); break
 			case 'bomber': this.#updateBomber(canvas, deltaTime); break
-			case 'turret': this.#updateTurret(canvas, target, platforms, deltaTime); break
+			case 'turret': this.#updateTurret(canvas, platforms, deltaTime); break
 			case 'charger': this.#updateCharger(canvas, target, platforms, deltaTime); break
 			default: this.#updateGround(canvas, target, platforms, deltaTime) // 'ground': biker + brute
 		}
@@ -192,23 +216,81 @@ export class Enemy {
 		else {
 			this.#dropBomb()
 			this.fireCooldown = this.fireInterval
+			this.attackAnim = DRONE_ATTACK_STEPS
+		}
+		// Show the bomb-drop frames for a beat after a release, otherwise hover (idle).
+		if (this.attackAnim > 0) {
+			this.attackAnim--
+			this.#setAnim('attack')
+		} else {
+			this.#setAnim('idle')
 		}
 	}
 
-	// Anchored turret: no chase. Settle on the ground, face the player, and fire a
-	// full radial burst on a cooldown — a dodge-the-ring hazard.
-	#updateTurret(canvas: HTMLCanvasElement, target: Player, platforms: Platform[], deltaTime: number) {
-		this.direction = target.pos.x < this.pos.x ? 'left' : 'right'
+	// Rolling turret: trundles in from a side, stops fully before doing anything hostile,
+	// speeds up its idle as a tell, then fires a fan of bolts toward its cannon side.
+	// Advances toward the interior in jerky steps and sometimes turns around. It never
+	// fires while moving — hostile output only ever happens from a dead stop.
+	#updateTurret(canvas: HTMLCanvasElement, platforms: Platform[], deltaTime: number) {
+		// Lazy init: face into the map from whichever side it rolled in on.
+		if (this.turretDir === 0) {
+			this.turretDir = this.pos.x < canvas.width / 2 ? 1 : -1
+			this.direction = this.turretDir < 0 ? 'left' : 'right'
+			this.turretState = 'roll'
+			this.#setTurretRollTarget(canvas)
+		}
+
+		if (this.turretState === 'roll') {
+			this.#setAnim('walk')
+			const dx = this.turretTargetX - this.pos.x
+			const step = Math.sign(dx) * TURRET_ROLL_SPEED * deltaTime
+			if (Math.abs(step) >= Math.abs(dx)) {
+				// Reached the stop. Pick the burst direction now (turn around at a wall, or
+				// at random) so a wall-hugging turret always fires into the map.
+				this.pos.x = this.turretTargetX
+				const minX = TURRET_MARGIN
+				const maxX = canvas.width - this.width - TURRET_MARGIN
+				const atWall =
+					(this.turretTargetX <= minX + 0.5 && this.turretDir < 0) ||
+					(this.turretTargetX >= maxX - 0.5 && this.turretDir > 0)
+				if (atWall || Math.random() < TURRET_FLIP_CHANCE) this.turretDir *= -1
+				this.direction = this.turretDir < 0 ? 'left' : 'right'
+				this.turretState = 'aim'
+				this.turretTimer = TURRET_AIM_STEPS
+			} else {
+				this.pos.x += step
+			}
+		} else if (this.turretState === 'aim') {
+			// Stopped: idle normally, then sped-up for the second half — the firing tell.
+			if (this.turretTimer > TURRET_AIM_STEPS / 2) this.#setAnim('idle')
+			else this.#setAnim('idle', TURRET_AIM_FAST)
+			if (--this.turretTimer <= 0) {
+				this.#fireTurretBurst()
+				this.#setAnim('attack')
+				this.turretState = 'fire'
+				this.turretTimer = TURRET_FIRE_STEPS
+			}
+		} else {
+			// Hold on the recoil frames, then trundle the next jerky step.
+			this.#setAnim('attack')
+			if (--this.turretTimer <= 0) {
+				this.turretState = 'roll'
+				this.#setTurretRollTarget(canvas)
+			}
+		}
+
 		this.#applyGravity(deltaTime)
 		this.#checkForVerticalCollisions(platforms)
 		this.#keepWithinCanvas(canvas)
+	}
 
-		if (this.fireCooldown > 0) {
-			this.fireCooldown--
-		} else if (this.pos.x > 0 && this.pos.x < canvas.width - this.width) {
-			this.#fireRadial()
-			this.fireCooldown = this.fireInterval
-		}
+	// Aim the next jerky step one TURRET_STEP toward the cannon, clamped to a margin so
+	// the turret always comes to rest fully on-screen.
+	#setTurretRollTarget(canvas: HTMLCanvasElement) {
+		const minX = TURRET_MARGIN
+		const maxX = canvas.width - this.width - TURRET_MARGIN
+		const target = this.pos.x + this.turretDir * TURRET_STEP
+		this.turretTargetX = Math.max(minX, Math.min(maxX, target))
 	}
 
 	// Charger: approach like a biker, then periodically wind up (telegraphed) and
@@ -266,23 +348,28 @@ export class Enemy {
 		effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 28 }, 'smoke_12'))
 	}
 
-	// Fire a full ring of hostile bolts, rotated by a random offset so the pattern
-	// varies from burst to burst. Slower than aimed shots so the ring is dodgeable.
-	#fireRadial() {
-		const originX = this.pos.x + this.width / 2
-		const originY = this.pos.y + this.height / 2
-		const offset = Math.random() * Math.PI * 2
+	// Fire a fan of hostile bolts toward the cannon side only (not a full ring). A
+	// vertical spread around the horizontal, so it threatens perches above and the floor
+	// below on that side; you dodge by crossing behind it or slipping between the bolts.
+	#fireTurretBurst() {
+		// Muzzle at the cannon: the sprite is foot-anchored, so its vertical centre (≈ the
+		// barrel) sits at pos.y + height − dh/2; nudge horizontally toward the cannon tip.
+		const dh = this.frameH * this.spriteScale
+		const muzzleX = this.pos.x + this.width / 2 + this.turretDir * this.width * 0.35
+		const muzzleY = this.pos.y + this.height - dh / 2
+		const base = this.turretDir > 0 ? 0 : Math.PI // fire right (0) or left (π)
 		for (let i = 0; i < TURRET_BOLTS; i++) {
-			const angle = offset + (i / TURRET_BOLTS) * Math.PI * 2
+			const f = TURRET_BOLTS === 1 ? 0.5 : i / (TURRET_BOLTS - 1) // 0..1 across the fan
+			const angle = base + (f * 2 - 1) * TURRET_SPREAD // base ± spread
 			projectilesStore.add(
-				new Projectile({ x: originX, y: originY }, angle, 'blue', {
+				new Projectile({ x: muzzleX, y: muzzleY }, angle, 'blue', {
 					hostile: true,
-					speed: 4.5,
+					speed: TURRET_BOLT_SPEED,
 					damage: this.damage
 				})
 			)
 		}
-		effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 28 }, 'smoke_12'))
+		effectsStore.add(new Effect({ x: muzzleX, y: muzzleY }, 'smoke_12'))
 	}
 
 	// Release a gravity bomb below the bomber with a little lateral scatter.
@@ -321,33 +408,55 @@ export class Enemy {
 		this.#animate(deltaTime)
 		if (this.hitFlash > 0) this.hitFlash--
 
-		const dw = this.width * this.spriteScale
-		const dh = this.height * this.spriteScale
+		const scale = this.spriteScale
 		const winding = this.behavior === 'charger' && this.dashState === 'wind'
+		// Whether to mirror the source (all art faces right, so flip when facing left).
+		const flip = this.direction === 'left'
 
 		ctx.save()
 		// Flash bright for a few frames after a hit; a charger flashes brighter
 		// while winding up so its dash is telegraphed.
 		if (this.hitFlash > 0) ctx.filter = 'brightness(2.6)'
 		else if (winding) ctx.filter = 'brightness(1.9)'
-		// Accent aura so same-sprite kinds read apart (bomber orange, turret violet…).
-		if (this.glow) {
-			ctx.shadowColor = this.accent
-			ctx.shadowBlur = winding ? 22 : 12
-		}
-		if (this.direction === 'right') {
-			ctx.drawImage(this.image, (this.frame - 1) * FRAME_W, 8, FRAME_W, FRAME_H, x, y, dw, dh)
+
+		let topY: number
+		if (this.anchor === 'topLeft') {
+			// Character sheet: art fills a hitbox-sized box from the top-left; the flip
+			// mirrors around the hitbox's right edge (unchanged legacy path).
+			topY = y
+			const dw = this.width * scale
+			const dh = this.height * scale
+			if (this.direction === 'right') {
+				ctx.drawImage(this.image, (this.frame - 1) * FRAME_W, 8, FRAME_W, FRAME_H, x, y, dw, dh)
+			} else {
+				ctx.save()
+				ctx.translate(x + this.width, y)
+				ctx.scale(-1, 1)
+				ctx.drawImage(this.image, (this.frame - 1) * FRAME_W, 8, FRAME_W, FRAME_H, 0, 0, dw, dh)
+				ctx.restore()
+			}
 		} else {
-			ctx.save()
-			ctx.translate(x + this.width, y)
-			ctx.scale(-1, 1)
-			ctx.drawImage(this.image, (this.frame - 1) * FRAME_W, 8, FRAME_W, FRAME_H, 0, 0, dw, dh)
-			ctx.restore()
+			// Gadget sheet (48×48): draw the square frame aspect-correct, centred on the
+			// hitbox, either footed on the floor (turret) or centred (hovering drone).
+			const dw = this.frameW * scale
+			const dh = this.frameH * scale
+			const drawX = x + this.width / 2 - dw / 2
+			topY = this.anchor === 'foot' ? y + this.height - dh : y + this.height / 2 - dh / 2
+			const srcX = (this.frame - 1) * this.frameW
+			if (!flip) {
+				ctx.drawImage(this.image, srcX, 0, this.frameW, this.frameH, drawX, topY, dw, dh)
+			} else {
+				ctx.save()
+				ctx.translate(drawX + dw, topY)
+				ctx.scale(-1, 1)
+				ctx.drawImage(this.image, srcX, 0, this.frameW, this.frameH, 0, 0, dw, dh)
+				ctx.restore()
+			}
 		}
 		ctx.restore()
 
 		// A slim chip bar appears once an enemy has taken damage.
-		if (this.maxHealth > 1 && this.health < this.maxHealth) this.#drawHealthBar(ctx, x, y)
+		if (this.maxHealth > 1 && this.health < this.maxHealth) this.#drawHealthBar(ctx, x, topY)
 	}
 
 	#drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number) {
@@ -383,6 +492,27 @@ export class Enemy {
 			return true
 		}
 		return false
+	}
+
+	// Switch the active animation (gadget kinds only — characters stay on 'run'). Resets
+	// the frame cursor on a real change; an optional `speed` overrides the sheet's cadence
+	// (used to accelerate the turret's idle into a firing tell). No-ops if the sheet lacks
+	// the animation, so a kind never crashes on a missing entry.
+	#setAnim(name: string, speed?: number) {
+		if (!hasSprite(this.character, name)) return
+		if (name !== this.currentAnim) {
+			const s = getSprite(this.character, name)
+			this.image = s.img
+			this.maxFrame = s.frames ?? 0
+			this.frameW = s.width
+			this.frameH = s.height
+			this.ticksPerFrame = speed ?? s.speed
+			this.frame = 1
+			this.ticksCount = 0
+			this.currentAnim = name
+		} else if (speed !== undefined) {
+			this.ticksPerFrame = speed
+		}
 	}
 
 	#animate(deltaTime: number) {

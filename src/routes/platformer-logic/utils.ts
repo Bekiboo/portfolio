@@ -12,6 +12,14 @@ export const collision = (rect1: Rect, rect2: Rect) => {
 	return true
 }
 
+// True if a character sheet defines this animation. Enemies that switch animations
+// (turret idle/walk/attack, drone idle/attack) call this before #setAnim so a kind
+// missing an animation silently keeps its current one instead of crashing on a
+// getSprite of an undefined entry.
+export function hasSprite(category: string, animation: string): boolean {
+	return !!sprites[category]?.[animation]
+}
+
 export function getSprite(category: string, animation: string) {
 	const sprite = sprites[category][animation]
 	return {

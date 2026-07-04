@@ -35,6 +35,19 @@ const sprites: SpriteData = {
 	cyborg: {
 		run: { frames: 6, img: loadImage('/sprites/Characters/Cyborg/Run.png') }
 	},
+	// Compact 48×48 "gadget" sheets (art fills the whole frame, unlike the 48×80
+	// character sheets whose art sits in the top portion). Multi-animation: the
+	// turret rolls (walk), telegraphs a shot (a sped-up idle), then fires (attack);
+	// the drone hovers (idle) and drops bombs (attack).
+	turret: {
+		idle: { frames: 4, speed: 10, img: loadImage('/sprites/Turret/Idle.png'), width: 48, height: 48 },
+		walk: { frames: 4, speed: 6, img: loadImage('/sprites/Turret/Walk.png'), width: 48, height: 48 },
+		attack: { frames: 4, speed: 4, img: loadImage('/sprites/Turret/Attack.png'), width: 48, height: 48 }
+	},
+	drone: {
+		idle: { frames: 4, speed: 6, img: loadImage('/sprites/Drone/Idle.png'), width: 48, height: 48 },
+		attack: { frames: 4, speed: 4, img: loadImage('/sprites/Drone/Attack.png'), width: 48, height: 48 }
+	},
 	effect: {
 		// smoke_12 is a ground puff (art sits low in the frame) — used for footfalls,
 		// muzzle recoil, pickups. smoke_14 is a symmetric burst centred in its frame,
