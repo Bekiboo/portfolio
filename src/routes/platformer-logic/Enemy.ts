@@ -396,7 +396,16 @@ export class Enemy {
 		this.health -= damage
 		this.hitFlash = 6
 		if (this.health <= 0) {
-			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 28 }, 'smoke_12'))
+			// Symmetric burst (smoke_14) truly centred on the enemy's body — `centered`
+			// fixes the draw anchor so it sits on the middle, not the low footfall
+			// anchor (smoke_12) used for pickups/footfalls elsewhere.
+			effectsStore.add(
+				new Effect(
+					{ x: this.pos.x + this.width / 2, y: this.pos.y + this.height / 2 },
+					'smoke_14',
+					{ centered: true }
+				)
+			)
 			enemiesStore.delete(this)
 			return true
 		}

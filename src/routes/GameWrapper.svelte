@@ -5,8 +5,9 @@
 	import { Enemy } from './platformer-logic/Enemy'
 	import { XpGem } from './platformer-logic/XpGem'
 	import { Bomb } from './platformer-logic/Bomb'
+	import { HealthPack } from './platformer-logic/HealthPack'
 	import type { EnemyKind } from './platformer-logic/Enemy'
-	import { effects, projectiles, effectsStore, enemies, enemiesStore, projectilesStore, xpGems, xpGemsStore, bombs, bombsStore } from '$lib/stores'
+	import { effects, projectiles, effectsStore, enemies, enemiesStore, projectilesStore, xpGems, xpGemsStore, bombs, bombsStore, healthPacks, healthPacksStore } from '$lib/stores'
 	import { Effect } from './platformer-logic/Effect'
 	import { collision } from './platformer-logic/utils'
 	import { keys } from './platformer-logic/controller'
@@ -102,12 +103,10 @@
 		{ id: 'focus', name: 'Focus', desc: 'Précision accrue (tir plus serré)', kind: 'atk',
 			apply: () => (player.spread = Math.max(0.015, player.spread - 0.02)),
 			available: () => player.spread > 0.02, weight: () => 3 },
-		{ id: 'vitality', name: 'Vitality', desc: '+1 PV max (et soigne)', kind: 'def',
-			apply: () => { maxHp.update((m) => m + 1); playerHp.update((h) => h + 1) },
+		{ id: 'vitality', name: 'Vitality', desc: '+2 PV max (et soigne)', kind: 'def',
+			apply: () => { maxHp.update((m) => m + 2); playerHp.update((h) => h + 2) },
 			weight: (lvl) => Math.max(1, 2 - Math.floor(lvl / 4)) },
-		{ id: 'bandage', name: 'Bandage', desc: 'Soin complet', kind: 'def',
-			apply: () => playerHp.set(get(maxHp)), available: () => get(playerHp) < get(maxHp),
-			weight: () => (get(maxHp) - get(playerHp) >= 2 ? 4 : 2) }, // commoner when badly hurt
+		// (Healing is no longer an upgrade — enemies drop med-kits on the ground instead.)
 		{ id: 'iron', name: 'Iron Skin', desc: 'Invincibilité +30%', kind: 'def',
 			apply: () => (invulnSteps = Math.round(invulnSteps * 1.3)), weight: () => 3 },
 		{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +34', kind: 'util',
@@ -294,7 +293,28 @@
 			{ kind: 'turret', floor: waveTurretFloor(w) },
 			{ kind: 'bomber', floor: waveBomberFloor(w) }
 		]
-		const missing = pressures.find((p) => count(p.kind) < p.floor)?.kind ?? null
+		// Among the pressure types below their floor, pick one weighted by how far
+		// below it sits. Weighting by the deficit — rather than always taking the
+		// first unmet floor — stops a low-priority type (the bomber, last in the
+		// list) from starving forever: while the player keeps culling the flyers and
+		// shooters ahead of it, the strict-order version never climbed to the bomber
+		// rung. A totally-absent bomber (deficit 2) now outweighs a flyer that's just
+		// one short (deficit 1), so every vector eventually shows up.
+		const deficits = pressures
+			.map((p) => ({ kind: p.kind, need: p.floor - count(p.kind) }))
+			.filter((p) => p.need > 0)
+		let missing: EnemyKind | null = null
+		if (deficits.length) {
+			let r = Math.random() * deficits.reduce((s, p) => s + p.need, 0)
+			missing = deficits[deficits.length - 1].kind // guard against FP undershoot
+			for (const p of deficits) {
+				r -= p.need
+				if (r < 0) {
+					missing = p.kind
+					break
+				}
+			}
+		}
 		const groundKind: EnemyKind = Math.random() < chargerChance(w) ? 'charger' : 'biker'
 
 		if (list.length < waveEnemyCap(w)) {
@@ -332,27 +352,50 @@
 		effectsStore.add(new Effect({ x: player.pos.x, y: player.pos.y + 28 }, 'smoke_12'))
 	}
 
-	// Canvas HUD (hearts + score), drawn on top so the focus-mode veil doesn't dim it.
+	// Canvas HUD (HP gauge + wave/score + XP bar), drawn on top so the focus-mode
+	// veil doesn't dim it.
 	const drawHud = () => {
 		const cx = canvas.width / 2
 		ctx.save()
 		ctx.textAlign = 'center'
 		ctx.textBaseline = 'middle'
-		const hp = get(playerHp)
+		const hp = Math.max(0, get(playerHp))
 		const cap = get(maxHp)
-		ctx.font = '22px sans-serif'
-		for (let i = 0; i < cap; i++) {
-			ctx.fillStyle = i < hp ? '#ef4444' : '#475569'
-			ctx.fillText('♥', cx + (i - (cap - 1) / 2) * 26, 34)
+
+		// HP gauge (red): a single bar with 1-HP segment ticks — replaces the hearts.
+		const gW = 200
+		const gH = 13
+		const gx = cx - gW / 2
+		const gy = 16
+		const pctHp = cap > 0 ? Math.max(0, Math.min(1, hp / cap)) : 0
+		ctx.fillStyle = 'rgba(15, 23, 42, 0.8)' // slate-900 track
+		ctx.fillRect(gx, gy, gW, gH)
+		ctx.fillStyle = '#ef4444' // red-500 fill
+		ctx.fillRect(gx, gy, gW * pctHp, gH)
+		if (cap <= 24) {
+			ctx.strokeStyle = 'rgba(2, 6, 23, 0.55)'
+			ctx.lineWidth = 1
+			ctx.beginPath()
+			for (let i = 1; i < cap; i++) {
+				const tx = Math.round(gx + (gW * i) / cap) + 0.5
+				ctx.moveTo(tx, gy)
+				ctx.lineTo(tx, gy + gH)
+			}
+			ctx.stroke()
 		}
+		ctx.fillStyle = '#ffffff'
+		ctx.font = '700 10px ui-monospace, monospace'
+		ctx.fillText(`${hp} / ${cap}`, cx, gy + gH / 2 + 0.5)
+
 		ctx.font = '600 15px ui-monospace, monospace'
 		ctx.fillStyle = '#cbd5e1'
-		ctx.fillText(`WAVE ${get(wave)}   ·   LVL ${get(level)}   ·   SCORE ${get(score)}`, cx, 62)
+		ctx.fillText(`WAVE ${get(wave)}   ·   LVL ${get(level)}   ·   SCORE ${get(score)}`, cx, gy + gH + 18)
+
 		// XP-to-next-level progress bar (emerald) — fills as gems are banked.
 		const barW = 160
 		const barH = 5
 		const bx = cx - barW / 2
-		const by = 78
+		const by = gy + gH + 32
 		const pct = Math.max(0, Math.min(1, get(levelXp) / get(levelXpNeeded)))
 		ctx.fillStyle = 'rgba(15, 23, 42, 0.7)'
 		ctx.fillRect(bx, by, barW, barH)
@@ -374,7 +417,47 @@
 		ctx.restore()
 	}
 
-	// Nearest enemy to the player (by squared distance), for auto-aim. null if none.
+	// Does the segment (x1,y1)->(x2,y2) cross this platform rect? Liang-Barsky line
+	// clip — used to tell whether a shot at an enemy would slam into a platform first.
+	const segmentIntersectsRect = (
+		x1: number,
+		y1: number,
+		x2: number,
+		y2: number,
+		r: { left: number; top: number; width: number; height: number }
+	): boolean => {
+		const dx = x2 - x1
+		const dy = y2 - y1
+		const p = [-dx, dx, -dy, dy]
+		const q = [x1 - r.left, r.left + r.width - x1, y1 - r.top, r.top + r.height - y1]
+		let t0 = 0
+		let t1 = 1
+		for (let i = 0; i < 4; i++) {
+			if (p[i] === 0) {
+				if (q[i] < 0) return false // parallel to this edge and fully outside it
+			} else {
+				const t = q[i] / p[i]
+				if (p[i] < 0) {
+					if (t > t1) return false
+					if (t > t0) t0 = t
+				} else {
+					if (t < t0) return false
+					if (t < t1) t1 = t
+				}
+			}
+		}
+		return t0 < t1 // overlapping interval (strict: a mere graze doesn't block)
+	}
+
+	// True if any platform sits between the two points — the shot would be walled off.
+	const firingBlocked = (x1: number, y1: number, x2: number, y2: number): boolean => {
+		for (const p of platforms) if (segmentIntersectsRect(x1, y1, x2, y2, p)) return true
+		return false
+	}
+
+	// Nearest enemy with a clear line of fire (no platform in the way), for auto-aim.
+	// A perched player thus stops dumping shots into the platform they stand on and
+	// engages reachable threats (e.g. flyers overhead) instead. null if none can be hit.
 	const nearestEnemy = (): Enemy | null => {
 		const foes = $enemies ?? []
 		let best: Enemy | null = null
@@ -382,13 +465,15 @@
 		const px = player.pos.x + player.width / 2
 		const py = player.pos.y + player.height / 2
 		for (const e of foes) {
-			const dx = e.pos.x + e.width / 2 - px
-			const dy = e.pos.y + e.height / 2 - py
+			const ex = e.pos.x + e.width / 2
+			const ey = e.pos.y + e.height / 2
+			const dx = ex - px
+			const dy = ey - py
 			const d = dx * dx + dy * dy
-			if (d < bestD) {
-				bestD = d
-				best = e
-			}
+			if (d >= bestD) continue // farther than the current pick — skip the LoS test
+			if (firingBlocked(px, py, ex, ey)) continue
+			bestD = d
+			best = e
 		}
 		return best
 	}
@@ -426,6 +511,22 @@
 								{ value: enemy.xpValue }
 							)
 						)
+						// Occasionally drop a med-kit — but only while the player is hurt, so
+						// heals show up when they matter instead of cluttering a full-HP run.
+						if (get(playerHp) < get(maxHp)) {
+							const dropChance =
+								enemy.kind === 'brute' ? 0.5
+								: enemy.kind === 'bomber' || enemy.kind === 'turret' ? 0.12
+								: 0.05
+							if (Math.random() < dropChance) {
+								healthPacksStore.add(
+									new HealthPack({
+										x: enemy.pos.x + enemy.width / 2 - 9,
+										y: enemy.pos.y + enemy.height / 2
+									})
+								)
+							}
+						}
 					}
 					projectilesStore.delete(projectile)
 					break
@@ -527,6 +628,27 @@
 		}
 	}
 
+	// Walk over a med-kit to heal — only while hurt, so a full-HP player leaves it on
+	// the ground to grab later. Uncollected kits expire.
+	const resolveHealthPickups = () => {
+		const packs = $healthPacks ?? []
+		if (!packs.length || get(playerHp) >= get(maxHp)) return
+		const playerRect = {
+			width: player.width,
+			height: player.height,
+			top: player.pos.y,
+			left: player.pos.x
+		}
+		for (const pack of packs) {
+			const packRect = { width: pack.width, height: pack.height, top: pack.pos.y, left: pack.pos.x }
+			if (collision(playerRect, packRect)) {
+				playerHp.update((h) => Math.min(get(maxHp), h + pack.heal))
+				effectsStore.add(new Effect({ x: pack.pos.x, y: pack.pos.y }, 'smoke_12'))
+				healthPacksStore.delete(pack)
+			}
+		}
+	}
+
 	const animate = (timestamp: number) => {
 		if (lastTime === 0) lastTime = timestamp
 		const frameTime = Math.min(timestamp - lastTime, MAX_FRAME_TIME)
@@ -544,6 +666,7 @@
 			projectilesStore.set([])
 			xpGemsStore.set([])
 			bombsStore.set([])
+			healthPacksStore.set([])
 			resetUpgrades()
 			rerolls = BASE_REROLLS
 			levelUpOpen = false
@@ -585,6 +708,7 @@
 			if ($projectiles?.length) projectilesStore.set([])
 			if ($xpGems?.length) xpGemsStore.set([])
 			if ($bombs?.length) bombsStore.set([])
+			if ($healthPacks?.length) healthPacksStore.set([])
 			invuln = 0
 			waveBanner = 0
 		}
@@ -598,6 +722,7 @@
 				$xpGems?.forEach((gem) => gem.update(canvas, player, platforms, STEP_DELTA, magnetRadius))
 				if (playing) $enemies?.forEach((enemy) => enemy.update(canvas, player, platforms, STEP_DELTA, $enemies ?? []))
 				if (playing) $bombs?.forEach((bomb) => bomb.update(canvas, platforms, STEP_DELTA))
+				if (playing) $healthPacks?.forEach((pack) => pack.update(canvas, platforms, STEP_DELTA))
 				player.update(canvas, keys, platforms, STEP_DELTA)
 				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
 				const target = playing ? nearestEnemy() : null
@@ -612,6 +737,7 @@
 					}
 					resolveHits()
 					resolveGemPickups()
+					resolveHealthPickups()
 					if (invuln > 0) invuln--
 					resolvePlayerDamage()
 					resolveEnemyShots()
@@ -638,6 +764,7 @@
 		}
 		for (const platform of platforms) platform.draw(ctx)
 		$xpGems?.forEach((gem) => gem.draw(ctx, alpha))
+		$healthPacks?.forEach((pack) => pack.draw(ctx, alpha))
 		$enemies?.forEach((enemy) => enemy.draw(ctx, animDelta, alpha))
 		$bombs?.forEach((bomb) => bomb.draw(ctx, alpha))
 		$projectiles?.forEach((projectile) => projectile.draw(ctx, alpha))
@@ -674,6 +801,7 @@
 		projectilesStore.set([])
 		xpGemsStore.set([])
 		bombsStore.set([])
+		healthPacksStore.set([])
 	})
 </script>
 

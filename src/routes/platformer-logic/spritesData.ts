@@ -36,7 +36,11 @@ const sprites: SpriteData = {
 		run: { frames: 6, img: loadImage('/sprites/Characters/Cyborg/Run.png') }
 	},
 	effect: {
-		smoke_12: { frames: 4, speed: 5, img: loadImage('/sprites/Effects/Smoke/12.png') }
+		// smoke_12 is a ground puff (art sits low in the frame) — used for footfalls,
+		// muzzle recoil, pickups. smoke_14 is a symmetric burst centred in its frame,
+		// so it reads as an explosion when placed on an entity's centre (enemy deaths).
+		smoke_12: { frames: 4, speed: 5, img: loadImage('/sprites/Effects/Smoke/12.png') },
+		smoke_14: { frames: 6, speed: 5, img: loadImage('/sprites/Effects/Smoke/14.png'), width: 48, height: 48 }
 	},
 	weapon: {
 		gun_1: { img: loadImage('/sprites/Weapons/Guns/7_1.png') }

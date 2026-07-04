@@ -11,7 +11,7 @@ export const gameStatus = writable<GameStatus>('idle')
 export const gameStarted = derived(gameStatus, ($s) => $s === 'playing')
 
 // Per-run state, reset by startRun().
-export const MAX_HP = 3 // base HP cap; the Vitality upgrade raises the current cap
+export const MAX_HP = 10 // base HP cap (shown as a gauge); Vitality raises the current cap
 export const maxHp = writable(MAX_HP) // current HP cap (grows with Vitality)
 export const score = writable(0)
 export const playerHp = writable(MAX_HP)

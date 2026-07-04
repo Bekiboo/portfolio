@@ -18,14 +18,30 @@ export class XpGem {
 	pos: { x: number; y: number }
 	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
 	velocity: { x: number; y: number }
-	width = 14
-	height = 14
+	width: number
+	height: number
 	value: number
+	fill: string // colour tier so a fat gem reads at a glance
+	glow: string
 	age = 0 // physics steps lived; drives lifetime + blink
 	grounded = false
 
 	constructor(pos: { x: number; y: number }, opts: { value?: number } = {}) {
 		this.value = opts.value ?? 1
+		// Worth more → bigger and a richer colour (emerald → sky → gold).
+		const size = 14 + Math.min(2, this.value - 1) * 5 // 14 / 19 / 24
+		this.width = size
+		this.height = size
+		if (this.value >= 3) {
+			this.fill = '#fbbf24' // amber-400
+			this.glow = '#f59e0b' // amber-500
+		} else if (this.value === 2) {
+			this.fill = '#38bdf8' // sky-400
+			this.glow = '#0ea5e9' // sky-500
+		} else {
+			this.fill = '#34d399' // emerald-400
+			this.glow = '#10b981' // emerald-500
+		}
 		this.pos = { x: pos.x, y: pos.y }
 		this.prevPos = { x: pos.x, y: pos.y }
 		// Pop out with a little upward scatter so a burst of kills fans out.
@@ -113,8 +129,8 @@ export class XpGem {
 		ctx.save()
 		ctx.translate(x, y)
 		ctx.rotate(this.age * 0.04) // slow shimmer
-		ctx.fillStyle = '#34d399' // emerald-400
-		ctx.shadowColor = '#10b981' // emerald-500 glow
+		ctx.fillStyle = this.fill
+		ctx.shadowColor = this.glow
 		ctx.shadowBlur = 10
 		ctx.beginPath()
 		ctx.moveTo(0, -r)

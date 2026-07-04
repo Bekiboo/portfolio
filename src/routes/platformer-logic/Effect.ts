@@ -12,8 +12,14 @@ export class Effect {
 	ticksPerFrame!: number
 	ticksCount = 0
 	animation!: string
+	centered: boolean
 
-	constructor(pos: { x: number; y: number }, animation: string) {
+	constructor(
+		pos: { x: number; y: number },
+		animation: string,
+		opts: { centered?: boolean } = {}
+	) {
+		this.centered = opts.centered ?? false
 		this.pos = pos
 		this.image = getSprite('effect', animation).img
 		this.ticksPerFrame = getSprite('effect', animation).speed || 5
@@ -28,14 +34,21 @@ export class Effect {
 
 	draw(ctx: CanvasRenderingContext2D) {
 		this.#animate()
+		// The sprite is drawn at 2× its source frame. By default it's anchored at
+		// pos − halfFrame, which (because the draw is 2×) actually places the sprite's
+		// centre at pos + halfFrame — a low/offset anchor the footfall & pickup puffs
+		// are tuned around, so leave it. `centered` instead anchors at pos − fullFrame
+		// so a 2×-scaled sprite is *truly* centred on pos (on-body bursts like deaths).
+		const ax = this.centered ? this.width : this.width / 2
+		const ay = this.centered ? this.height : this.height / 2
 		ctx.drawImage(
 			this.image,
 			this.frame * this.width,
 			0,
 			this.width,
 			this.height,
-			this.pos.x - this.width / 2,
-			this.pos.y - this.height / 2,
+			this.pos.x - ax,
+			this.pos.y - ay,
 			this.width * 2,
 			this.height * 2
 		)
