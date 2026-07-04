@@ -3,8 +3,11 @@ import { effectsStore, enemiesStore, projectilesStore, bombsStore } from '$lib/s
 import { Effect } from './Effect'
 import { Projectile } from './Projectile'
 import { Bomb } from './Bomb'
+import { ENEMY_TYPES, type EnemyKind, type Behavior } from './enemyTypes'
 import type { Platform } from './Platform'
 import type { Player } from './Player'
+
+export type { EnemyKind } from './enemyTypes'
 
 const GRAVITY = 0.33
 const DEADZONE = 8 // px around the target where the enemy stops nudging (kills the left/right vibration)
@@ -12,10 +15,7 @@ const SEPARATION_GAP = 34 // enemies closer than this get pushed apart so they d
 const SEPARATION_PUSH = 0.6 // how hard overlapping neighbours shove each other per step
 const SHOOT_MIN = 180 // a shooter backs off if the player gets closer than this
 const SHOOT_MAX = 340 // ...and closes in if the player is farther than this
-const FIRE_INTERVAL = 110 // shooter: physics steps between aimed bolts (~1.8s)
-const TURRET_INTERVAL = 150 // turret: steps between radial bursts (~2.5s)
 const TURRET_BOLTS = 8 // bolts per turret radial burst
-const BOMB_INTERVAL = 150 // bomber: steps between bomb drops (~2.5s)
 const CHARGE_COOLDOWN = 150 // charger: steps between dashes
 const CHARGE_WIND = 16 // charger: telegraph wind-up before a dash
 const CHARGE_DASH = 16 // charger: dash duration
@@ -23,45 +23,12 @@ const CHARGE_DASH_MULT = 3.4 // charger: speed multiplier during a dash
 const FRAME_W = 48 // sprite-sheet frame size — every character sheet shares this
 const FRAME_H = 80
 
-export type EnemyKind = 'biker' | 'flyer' | 'shooter' | 'bomber' | 'turret' | 'charger' | 'brute'
-
-// Per-kind base stats + look. `health`/`speed`/`damage` are baselines the spawn
-// director scales up by wave; `xp` (gem value) and the visuals are fixed. `glow`
-// paints an accent-coloured aura around the sprite so the kinds — most of which
-// share the cyborg body — read apart at a glance.
-interface KindConfig {
-	health: number
-	speed: number
-	damage: number
-	xp: number
-	width: number
-	height: number
-	spriteScale: number
-	accent: string
-	glow: boolean
-}
-const KIND: Record<EnemyKind, KindConfig> = {
-	// Numerous close-range fodder — the plain baseline (no aura).
-	biker: { health: 3, speed: 2.4, damage: 1, xp: 1, width: 48, height: 80, spriteScale: 2, accent: '#f87171', glow: false },
-	// Homing air unit — no perch is safe.
-	flyer: { health: 2, speed: 2.0, damage: 1, xp: 1, width: 48, height: 80, spriteScale: 2, accent: '#c084fc', glow: true },
-	// Standoff gunner — peppers perches out of melee reach.
-	shooter: { health: 2, speed: 1.6, damage: 1, xp: 1, width: 48, height: 80, spriteScale: 2, accent: '#38bdf8', glow: true },
-	// Nimble rusher — closes then dashes; punishes standing still.
-	charger: { health: 2, speed: 2.2, damage: 1, xp: 1, width: 44, height: 76, spriteScale: 1.9, accent: '#fb7185', glow: true },
-	// Anchored turret — never chases, sprays bolts in all directions.
-	turret: { health: 6, speed: 0, damage: 1, xp: 2, width: 52, height: 80, spriteScale: 2, accent: '#a78bfa', glow: true },
-	// Hovering bomber — patrols overhead, rains area bombs, tanky.
-	bomber: { health: 7, speed: 1.3, damage: 2, xp: 2, width: 52, height: 82, spriteScale: 2.1, accent: '#fb923c', glow: true },
-	// Elite brute — big, slow, heavy contact hit, drops a fat gem.
-	brute: { health: 12, speed: 1.3, damage: 2, xp: 3, width: 64, height: 104, spriteScale: 2.3, accent: '#ef4444', glow: true }
-}
-
-// Seven enemy flavours sharing one body. Movement differs per kind; drawing,
-// hits and animation are shared. (Non-biker kinds share the cyborg sprite for
-// now — a temporary placeholder distinguished by size + accent aura.)
+// Seven enemy flavours sharing one body, all defined by data in enemyTypes.ts.
+// Movement differs per `behavior`; drawing, hits and animation are shared. (Non-biker
+// kinds share the cyborg sprite for now — a placeholder distinguished by size + aura.)
 export class Enemy {
 	kind: EnemyKind
+	behavior: Behavior
 	character: string
 	pos: { x: number; y: number }
 	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
@@ -71,6 +38,9 @@ export class Enemy {
 	spriteScale: number
 	accent: string
 	glow: boolean
+	separates: boolean // pushed apart from crowding neighbours?
+	separatesVertically: boolean // spread on the Y axis too (flyers)?
+	fireInterval: number // steps between shots/drops (0 for non-firing kinds)
 	speed: number
 	damage: number // contact/shot damage dealt to the player (scaled by wave at spawn)
 	xpValue: number // value of the gem dropped on death
@@ -95,35 +65,37 @@ export class Enemy {
 		opts: { speed?: number; kind?: EnemyKind; health?: number; damage?: number } = {}
 	) {
 		this.kind = opts.kind ?? 'biker'
-		const cfg = KIND[this.kind]
-		this.character = this.kind === 'biker' ? 'biker' : 'cyborg'
+		const t = ENEMY_TYPES[this.kind]
+		this.behavior = t.behavior
+		this.character = t.sprite
 		const sprite = getSprite(this.character, 'run')
 		this.image = sprite.img
 		this.ticksPerFrame = sprite.speed || 5
 		this.maxFrame = sprite.frames ?? 0
-		this.width = cfg.width
-		this.height = cfg.height
-		this.spriteScale = cfg.spriteScale
-		this.accent = cfg.accent
-		this.glow = cfg.glow
+		this.width = t.width
+		this.height = t.height
+		this.spriteScale = t.spriteScale
+		this.accent = t.accent
+		this.glow = t.glow
+		this.separates = t.separates
+		this.separatesVertically = t.separatesVertically
+		this.fireInterval = t.fireInterval ?? 0
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
-		this.speed = opts.speed ?? cfg.speed
-		// Fliers/bombers ignore gravity; bombers patrol horizontally from the start.
+		this.speed = opts.speed ?? t.speed
+		// Patrol kinds start with horizontal velocity; non-gravity kinds hover (vy 0).
 		this.velocity = {
-			x: this.kind === 'bomber' ? this.speed : 0,
-			y: this.kind === 'flyer' || this.kind === 'bomber' ? 0 : 1
+			x: t.patrol ? this.speed : 0,
+			y: t.gravity ? 1 : 0
 		}
-		this.health = opts.health ?? cfg.health
+		this.health = opts.health ?? t.health
 		this.maxHealth = this.health
-		this.damage = opts.damage ?? cfg.damage
-		this.xpValue = cfg.xp
-		// Stagger gunners/bombers so a wave doesn't fire in unison; randomise the
-		// charger's first dash timer.
-		if (this.kind === 'shooter') this.fireCooldown = Math.floor(Math.random() * FIRE_INTERVAL)
-		else if (this.kind === 'turret') this.fireCooldown = Math.floor(Math.random() * TURRET_INTERVAL)
-		else if (this.kind === 'bomber') this.fireCooldown = Math.floor(Math.random() * BOMB_INTERVAL)
-		else if (this.kind === 'charger') this.dashCd = Math.floor(Math.random() * CHARGE_COOLDOWN)
+		this.damage = opts.damage ?? t.damage
+		this.xpValue = t.xp
+		// Stagger firing kinds so a wave doesn't shoot in unison; randomise the
+		// charger's first dash so a pack doesn't dash as one.
+		if (this.behavior === 'charger') this.dashCd = Math.floor(Math.random() * CHARGE_COOLDOWN)
+		else if (this.fireInterval) this.fireCooldown = Math.floor(Math.random() * this.fireInterval)
 	}
 
 	update(
@@ -136,15 +108,16 @@ export class Enemy {
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
 
-		if (this.kind === 'flyer') this.#updateFlyer(canvas, target, deltaTime)
-		else if (this.kind === 'shooter') this.#updateShooter(canvas, target, platforms, deltaTime)
-		else if (this.kind === 'bomber') this.#updateBomber(canvas, deltaTime)
-		else if (this.kind === 'turret') this.#updateTurret(canvas, target, platforms, deltaTime)
-		else if (this.kind === 'charger') this.#updateCharger(canvas, target, platforms, deltaTime)
-		else this.#updateGround(canvas, target, platforms, deltaTime) // biker + brute
+		switch (this.behavior) {
+			case 'flyer': this.#updateFlyer(canvas, target, deltaTime); break
+			case 'shooter': this.#updateShooter(canvas, target, platforms, deltaTime); break
+			case 'bomber': this.#updateBomber(canvas, deltaTime); break
+			case 'turret': this.#updateTurret(canvas, target, platforms, deltaTime); break
+			case 'charger': this.#updateCharger(canvas, target, platforms, deltaTime); break
+			default: this.#updateGround(canvas, target, platforms, deltaTime) // 'ground': biker + brute
+		}
 
-		// Anchored/flying kinds fly their own pattern and shouldn't be shoved around.
-		if (this.kind !== 'turret' && this.kind !== 'bomber') this.#separate(others, deltaTime)
+		if (this.separates) this.#separate(others, deltaTime)
 	}
 
 	// Ground chaser: nudge horizontally toward the player (with a deadzone so it
@@ -196,7 +169,7 @@ export class Enemy {
 			this.fireCooldown--
 		} else if (this.pos.x > 0 && this.pos.x < canvas.width - this.width) {
 			this.#fire(target)
-			this.fireCooldown = FIRE_INTERVAL
+			this.fireCooldown = this.fireInterval
 		}
 	}
 
@@ -218,7 +191,7 @@ export class Enemy {
 		if (this.fireCooldown > 0) this.fireCooldown--
 		else {
 			this.#dropBomb()
-			this.fireCooldown = BOMB_INTERVAL
+			this.fireCooldown = this.fireInterval
 		}
 	}
 
@@ -234,7 +207,7 @@ export class Enemy {
 			this.fireCooldown--
 		} else if (this.pos.x > 0 && this.pos.x < canvas.width - this.width) {
 			this.#fireRadial()
-			this.fireCooldown = TURRET_INTERVAL
+			this.fireCooldown = this.fireInterval
 		}
 	}
 
@@ -333,13 +306,13 @@ export class Enemy {
 			const oy = o.pos.y - this.pos.y
 			if (Math.abs(ox) < SEPARATION_GAP && Math.abs(oy) < this.height * 0.8) {
 				pushX -= Math.sign(ox || 1) * (1 - Math.abs(ox) / SEPARATION_GAP)
-				if (this.kind === 'flyer') {
+				if (this.separatesVertically) {
 					pushY -= Math.sign(oy || 1) * (1 - Math.abs(oy) / (this.height * 0.8))
 				}
 			}
 		}
 		this.pos.x += pushX * SEPARATION_PUSH * deltaTime
-		if (this.kind === 'flyer') this.pos.y += pushY * SEPARATION_PUSH * deltaTime
+		if (this.separatesVertically) this.pos.y += pushY * SEPARATION_PUSH * deltaTime
 	}
 
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
@@ -350,7 +323,7 @@ export class Enemy {
 
 		const dw = this.width * this.spriteScale
 		const dh = this.height * this.spriteScale
-		const winding = this.kind === 'charger' && this.dashState === 'wind'
+		const winding = this.behavior === 'charger' && this.dashState === 'wind'
 
 		ctx.save()
 		// Flash bright for a few frames after a hit; a charger flashes brighter
