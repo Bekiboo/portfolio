@@ -31,14 +31,6 @@ export class Player {
 	jumpAvailable = 2
 	status = 'idle'
 
-	// --- Melee (Biker) — used only by the 'melee' attack style; reset each run from the
-	// class baseline (GameWorld.resetUpgrades) and bumped by Biker-only upgrades. ---
-	meleeReach = 92 // swing radius (px) from the player's centre
-	meleeArc = 1.4 // half-angle of the swing cone (radians)
-	knockback = 8 // horizontal shove applied to enemies the swing connects with (px)
-	healOnKill = 1 // HP restored per melee kill (capped at maxHp)
-	swingTimer = 0 // steps the swing sprite is held so it stays visible between cadence ticks
-
 	constructor(pos: { x: number; y: number }) {
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
@@ -79,7 +71,6 @@ export class Player {
 
 		if (this.velocity.x != 0) this.velocity.x = 0 // reset velocity
 
-		if (this.swingTimer > 0) this.swingTimer-- // count down the held melee-swing sprite
 		this.#handleKeys(keys)
 	}
 
@@ -101,8 +92,8 @@ export class Player {
 		// so motion stays smooth at the display's refresh rate.
 		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
-		// Only the ranged class holds the gun; the Biker fights bare-handed and the
-		// Cyborg engineer lets its turrets do the shooting.
+		// Only a ranged class holds the gun (the attackStyle seam — kept for when melee
+		// classes return; the Punk is always ranged today).
 		if (this.cfg.attackStyle === 'ranged') {
 			this.#drawHand(ctx, x, y)
 			this.#drawWeapon(ctx, x, y)
@@ -212,19 +203,6 @@ export class Player {
 		}
 	}
 
-	// Melee swing (Biker): face the target and play the swing animation, held a few
-	// steps (swingTimer) so it stays visible between cadence ticks and isn't stomped by
-	// idle/run in #handleKeys. Hit resolution — the arc, damage, knockback and heal — is
-	// done by GameWorld.meleeSwing; this is purely the presentation half.
-	swing(target: { pos: { x: number; y: number }; width: number }) {
-		const tx = target.pos.x + target.width / 2
-		const cx = this.pos.x + this.width / 2
-		this.direction = tx < cx ? 'left' : 'right'
-		const moving = Math.abs(this.pos.x - this.prevPos.x) > 0.01
-		this.#playerSprite(moving ? 'run_attack' : 'punch')
-		this.swingTimer = 14
-	}
-
 	#animate(deltaTime: number) {
 		this.ticksCount += deltaTime
 		if (this.ticksCount > this.ticksPerFrame) {
@@ -238,9 +216,8 @@ export class Player {
 	}
 
 	#playerSprite(animation: string) {
-		// A class missing this animation (Biker/Cyborg have no punch/run_attack sheet
-		// loaded yet) keeps its current sprite instead of crashing — same guard the
-		// enemies use for their optional animations.
+		// A class missing this animation keeps its current sprite instead of crashing —
+		// the same guard the enemies use for their optional animations.
 		if (!hasSprite(this.character, animation)) return
 		const sprite = getSprite(this.character, animation)
 		this.image = sprite.img
@@ -250,13 +227,7 @@ export class Player {
 	}
 
 	#handleKeys(keys: KeyState) {
-		// While a melee swing is being held, don't let run/idle stomp the swing sprite.
-		if (
-			(keys['right'] || keys['left']) &&
-			!this.velocity.y &&
-			!keys['punch'] &&
-			this.swingTimer <= 0
-		) {
+		if ((keys['right'] || keys['left']) && !this.velocity.y && !keys['punch']) {
 			this.#playerSprite('run')
 		}
 
@@ -269,14 +240,7 @@ export class Player {
 			this.velocity.x = this.speed
 		}
 
-		if (
-			!keys['up'] &&
-			!keys['down'] &&
-			!keys['left'] &&
-			!keys['right'] &&
-			!keys['punch'] &&
-			this.swingTimer <= 0
-		) {
+		if (!keys['up'] && !keys['down'] && !keys['left'] && !keys['right'] && !keys['punch']) {
 			this.#playerSprite('idle')
 		}
 	}

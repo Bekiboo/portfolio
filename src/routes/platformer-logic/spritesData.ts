@@ -29,20 +29,15 @@ const sprites: SpriteData = {
 		punch_2: { frames: 8, speed: 4, img: loadImage('/sprites/Characters/Punk/Attack2.png') },
 		run_attack: { frames: 6, img: loadImage('/sprites/Characters/Punk/Run_attack.png') }
 	},
-	// Biker/Cyborg carry idle+run+jump so the three selectable classes each read distinct
-	// (restored from /archive). The Biker also has its melee swing frames (punch/run_attack);
-	// the Player falls back gracefully (hasSprite guard) for any animation not loaded.
+	// The 'biker' and 'cyborg' sheets are ENEMY skins (the ground biker; cyborg-skinned
+	// flyer/shooter/charger/brute) — character-sheet enemies only ever animate on 'run'.
+	// The extra idle/jump/punch/run_attack frames belonged to the parked multi-class PLAYER
+	// system and were removed with it; restore them from git if a class comes back.
 	biker: {
-		idle: { frames: 4, speed: 10, img: loadImage('/sprites/Characters/Biker/Idle.png') },
-		run: { frames: 6, img: loadImage('/sprites/Characters/Biker/Run.png') },
-		jump: { frames: 4, speed: 10, img: loadImage('/sprites/Characters/Biker/Jump.png') },
-		punch: { frames: 6, speed: 3, img: loadImage('/sprites/Characters/Biker/Attack1.png') },
-		run_attack: { frames: 6, img: loadImage('/sprites/Characters/Biker/Run_attack.png') }
+		run: { frames: 6, img: loadImage('/sprites/Characters/Biker/Run.png') }
 	},
 	cyborg: {
-		idle: { frames: 4, speed: 10, img: loadImage('/sprites/Characters/Cyborg/Idle.png') },
-		run: { frames: 6, img: loadImage('/sprites/Characters/Cyborg/Run.png') },
-		jump: { frames: 4, speed: 10, img: loadImage('/sprites/Characters/Cyborg/Jump.png') }
+		run: { frames: 6, img: loadImage('/sprites/Characters/Cyborg/Run.png') }
 	},
 	// Compact 48×48 "gadget" sheets (art fills the whole frame, unlike the 48×80
 	// character sheets whose art sits in the top portion). Multi-animation: the
@@ -68,9 +63,7 @@ const sprites: SpriteData = {
 		gun_1: { img: loadImage('/sprites/Weapons/Guns/7_1.png') }
 	},
 	hand: {
-		punk_3: { img: loadImage('/sprites/Hands/Punk/3.png') },
-		biker_3: { img: loadImage('/sprites/Hands/Biker/3.png') },
-		cyborg_3: { img: loadImage('/sprites/Hands/Cyborg/3.png') }
+		punk_3: { img: loadImage('/sprites/Hands/Punk/3.png') }
 	},
 	projectile: {
 		blue: { img: loadImage('/sprites/Bullets/5.png'), width: 30, height: 4 }
