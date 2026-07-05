@@ -5,18 +5,31 @@ import { Enemy } from './Enemy'
 import { XpGem } from './XpGem'
 import { HealthPack } from './HealthPack'
 import { Effect } from './Effect'
+import { Turret } from './Turret'
 import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
+import { CHARACTERS, CHARACTER_LIST } from './characters'
 import {
 	effectsStore,
 	enemiesStore,
 	projectilesStore,
 	xpGemsStore,
 	bombsStore,
-	healthPacksStore
+	healthPacksStore,
+	turretsStore
 } from '$lib/stores'
 import { collision } from './utils'
 import { keys } from './controller'
-import { gameStatus, score, playerHp, maxHp, wave, addXp, gameOver, stopRun } from '$lib/game'
+import {
+	gameStatus,
+	score,
+	playerHp,
+	maxHp,
+	wave,
+	addXp,
+	gameOver,
+	stopRun,
+	character
+} from '$lib/game'
 import {
 	WAVE_DURATION,
 	waveSpawnInterval,
@@ -35,9 +48,15 @@ import {
 	BASE_FIRE_STEPS,
 	BASE_INVULN,
 	BASE_MAGNET,
-	BASE_SPEED,
-	BASE_SPREAD,
 	BASE_REROLLS,
+	BASE_MELEE_REACH,
+	BASE_MELEE_ARC,
+	BASE_KNOCKBACK,
+	BASE_HEAL_ON_KILL,
+	BASE_MAX_TURRETS,
+	BASE_TURRET_FIRE_STEPS,
+	BASE_TURRET_DAMAGE,
+	BASE_TURRET_LIFE,
 	type Upgrade
 } from './upgrades'
 
@@ -81,6 +100,11 @@ export class GameWorld {
 	invulnSteps = BASE_INVULN
 	magnetRadius = BASE_MAGNET
 	xpMul = 1 // XP banked per gem
+	// Deploy (Cyborg) run tunables — bumped by the Cyborg-only upgrades, reset each run.
+	maxTurrets = BASE_MAX_TURRETS
+	turretFireSteps = BASE_TURRET_FIRE_STEPS
+	turretDamage = BASE_TURRET_DAMAGE
+	turretLife = BASE_TURRET_LIFE
 
 	// --- Level-up pick state (read by the Svelte template, hence reactive) ---
 	// gameStatus stays 'playing' during the pick (so the field isn't cleared); these
@@ -117,6 +141,7 @@ export class GameWorld {
 		xpGemsStore.clear()
 		bombsStore.clear()
 		healthPacksStore.clear()
+		turretsStore.clear()
 	}
 
 	// --- Input ----------------------------------------------------------------
@@ -130,6 +155,13 @@ export class GameWorld {
 			else if (e.code === 'Digit3' || e.code === 'Numpad3') this.chooseUpgrade(this.choices[2])
 			else if (e.code === 'KeyR') this.reroll()
 			return
+		}
+		// While idle, 1/2/3 pick the class to play (mirrors the on-screen hub cards).
+		// Only the digit keys are swallowed; movement keys still work at rest.
+		if (get(gameStatus) === 'idle') {
+			if (e.code === 'Digit1' || e.code === 'Numpad1') return character.set(CHARACTER_LIST[0].kind)
+			if (e.code === 'Digit2' || e.code === 'Numpad2') return character.set(CHARACTER_LIST[1].kind)
+			if (e.code === 'Digit3' || e.code === 'Numpad3') return character.set(CHARACTER_LIST[2].kind)
 		}
 		// Escape bails out of a run / dismisses game-over; everything else is movement.
 		if (e.code === 'Escape') {
@@ -182,14 +214,28 @@ export class GameWorld {
 
 	// --- Upgrades -------------------------------------------------------------
 	private resetUpgrades() {
-		this.fireSteps = BASE_FIRE_STEPS
+		// Base stats come from the active class (Player.cfg); the level-up upgrades bump
+		// them from here. Invuln + magnet aren't class-specific in v1, so they keep their
+		// global baselines.
+		const c = this.player.cfg
+		this.fireSteps = c.fireSteps
 		this.invulnSteps = BASE_INVULN
 		this.magnetRadius = BASE_MAGNET
 		this.xpMul = 1
-		this.player.speed = BASE_SPEED
-		this.player.projectileCount = 1
-		this.player.damage = 1
-		this.player.spread = BASE_SPREAD
+		this.player.speed = c.speed
+		this.player.projectileCount = c.projectileCount
+		this.player.damage = c.damage
+		this.player.spread = c.spread
+		// Melee (Biker) tunables — reset for every class; harmless no-ops for non-melee.
+		this.player.meleeReach = BASE_MELEE_REACH
+		this.player.meleeArc = BASE_MELEE_ARC
+		this.player.knockback = BASE_KNOCKBACK
+		this.player.healOnKill = BASE_HEAL_ON_KILL
+		// Deploy (Cyborg) tunables.
+		this.maxTurrets = BASE_MAX_TURRETS
+		this.turretFireSteps = BASE_TURRET_FIRE_STEPS
+		this.turretDamage = BASE_TURRET_DAMAGE
+		this.turretLife = BASE_TURRET_LIFE
 	}
 
 	// Spend a reroll to redraw the current choices (no-op when none are left).
@@ -301,6 +347,110 @@ export class GameWorld {
 	}
 
 	// --- Combat resolution ----------------------------------------------------
+	// Dispatch the player's attack on the active class's style, on the fire cadence
+	// while a target is in range. Phase 0 routes every style through the ranged shot;
+	// the melee arc (Biker) lands in Phase 1 and the friendly-turret deploy (Cyborg) in
+	// Phase 2 — each fills in its case here, driven purely by the character registry.
+	private playerAttack(target: Enemy) {
+		switch (this.player.cfg.attackStyle) {
+			case 'ranged':
+				this.player.shoot()
+				break
+			case 'melee':
+				this.meleeSwing(target)
+				break
+			case 'deploy':
+				this.deployTurret()
+				break
+		}
+	}
+
+	// Cyborg deploy: drop a friendly turret at the player's feet (snapped to the ground
+	// beneath), up to the current cap. At the cap the cadence idles until one expires —
+	// the deploy-and-manage loop. New turrets freeze the current run tunables at spawn.
+	private deployTurret() {
+		if (turretsStore.list.length >= this.maxTurrets) return
+		const p = this.player
+		const w = 52 // keep in step with Turret's hitbox
+		const h = 44
+		// Scatter around the player's feet so stacked turrets don't overlap.
+		const cx = p.pos.x + p.width / 2 + (Math.random() * 2 - 1) * 44
+		const groundY = this.groundBelow(cx, p.pos.y + p.height)
+		turretsStore.add(
+			new Turret(
+				{ x: cx - w / 2, y: groundY - h },
+				{ life: this.turretLife, fireSteps: this.turretFireSteps, damage: this.turretDamage }
+			)
+		)
+	}
+
+	// The nearest floor at or below `fromY` in the column `cx` (the platform the player
+	// stands on, or one below), falling back to the canvas floor.
+	private groundBelow(cx: number, fromY: number): number {
+		let best = this.canvas.height
+		for (const p of this.platforms) {
+			if (cx < p.left || cx > p.left + p.width) continue
+			if (p.top >= fromY - 2 && p.top < best) best = p.top
+		}
+		return best
+	}
+
+	// Biker melee: swing an auto-aimed arc at the nearest enemy — damage every foe in a
+	// cone in front of the player, shove them back, and heal on each kill. No projectiles;
+	// damage is applied directly here (iterate a snapshot — hit() removes the dead from
+	// the live pool). Kills route through the same drop logic as bolts (onEnemyKilled).
+	private meleeSwing(target: Enemy) {
+		const p = this.player
+		const px = p.pos.x + p.width / 2
+		const py = p.pos.y + p.height / 2
+		const tx = target.pos.x + target.width / 2
+		const ty = target.pos.y + target.height / 2
+		// Only engage when the nearest enemy is roughly within reach — no swinging at
+		// empty air while still closing the distance.
+		if (Math.hypot(tx - px, ty - py) > p.meleeReach * 1.35) return
+		p.swing(target) // face + play the swing animation
+		const facing = p.direction === 'left' ? -1 : 1
+		let connected = false
+		for (const enemy of enemiesStore.list.slice()) {
+			const dx = enemy.pos.x + enemy.width / 2 - px
+			const dy = enemy.pos.y + enemy.height / 2 - py
+			if (Math.hypot(dx, dy) > p.meleeReach) continue
+			// Cone: within ±meleeArc of the facing horizontal (also excludes anything
+			// behind, as the half-angle stays under a hemisphere).
+			if (Math.abs(Math.atan2(dy, facing * dx)) > p.meleeArc) continue
+			connected = true
+			enemy.pos.x += facing * p.knockback // shove back
+			if (enemy.hit(p.damage)) {
+				this.onEnemyKilled(enemy)
+				playerHp.update((h) => Math.min(get(maxHp), h + p.healOnKill)) // lifesteal on kill
+			}
+		}
+		// Impact puff when the swing connects, for feedback.
+		if (connected)
+			effectsStore.add(
+				new Effect({ x: px + facing * p.meleeReach * 0.4 - 24, y: py - 24 }, 'smoke_14', {
+					centered: true
+				})
+			)
+	}
+
+	// Enemy took a lethal hit: bank score, drop its XP gem (falls under gravity) and,
+	// while the player is hurt, maybe a med-kit. Shared by ranged bolts and melee swings.
+	private onEnemyKilled(enemy: Enemy) {
+		score.update((s) => s + 1)
+		xpGemsStore.add(
+			new XpGem(
+				{ x: enemy.pos.x + enemy.width / 2 - 7, y: enemy.pos.y + enemy.height / 2 },
+				{ value: enemy.xpValue }
+			)
+		)
+		if (get(playerHp) < get(maxHp) && Math.random() < ENEMY_TYPES[enemy.kind].medkitDrop) {
+			healthPacksStore.add(
+				new HealthPack({ x: enemy.pos.x + enemy.width / 2 - 9, y: enemy.pos.y + enemy.height / 2 })
+			)
+		}
+	}
+
 	// Bullet → enemy hits. Snapshot both pools first: delete() swaps the store arrays
 	// mid-loop, so iterate copies (the old writable froze the loop the same way).
 	private resolveHits() {
@@ -323,30 +473,10 @@ export class GameWorld {
 					left: enemy.pos.x
 				}
 				if (collision(enemyRect, projRect)) {
-					if (enemy.hit(projectile.damage)) {
-						score.update((s) => s + 1)
-						// Drop an XP gem where it fell; it tumbles to the floor under
-						// gravity, so the player must leave a safe perch to bank it. Tough
-						// enemies (turrets/bombers/brutes) drop a fatter gem — focus pays.
-						xpGemsStore.add(
-							new XpGem(
-								{ x: enemy.pos.x + enemy.width / 2 - 7, y: enemy.pos.y + enemy.height / 2 },
-								{ value: enemy.xpValue }
-							)
-						)
-						// Occasionally drop a med-kit — but only while the player is hurt, so
-						// heals show up when they matter instead of cluttering a full-HP run.
-						if (get(playerHp) < get(maxHp)) {
-							if (Math.random() < ENEMY_TYPES[enemy.kind].medkitDrop) {
-								healthPacksStore.add(
-									new HealthPack({
-										x: enemy.pos.x + enemy.width / 2 - 9,
-										y: enemy.pos.y + enemy.height / 2
-									})
-								)
-							}
-						}
-					}
+					// A killing bolt drops XP (tumbles to the floor under gravity, so the
+					// player must leave a safe perch to bank it) and, while hurt, maybe a
+					// med-kit — the shared drop logic melee kills use too.
+					if (enemy.hit(projectile.damage)) this.onEnemyKilled(enemy)
 					projectilesStore.delete(projectile)
 					break
 				}
@@ -489,6 +619,10 @@ export class GameWorld {
 			xpGemsStore.clear()
 			bombsStore.clear()
 			healthPacksStore.clear()
+			turretsStore.clear()
+			// Reconfigure the Player to the class picked while idle, then reset its base
+			// stats from that class. (HP was already seeded by startRun.)
+			this.player.applyCharacter(CHARACTERS[get(character)])
 			this.resetUpgrades()
 			this.rerolls = BASE_REROLLS
 			this.levelUpOpen = false
@@ -538,6 +672,7 @@ export class GameWorld {
 			if (xpGemsStore.list.length) xpGemsStore.clear()
 			if (bombsStore.list.length) bombsStore.clear()
 			if (healthPacksStore.list.length) healthPacksStore.clear()
+			if (turretsStore.list.length) turretsStore.clear()
 			this.invuln = 0
 			this.waveBanner = 0
 		}
@@ -551,17 +686,30 @@ export class GameWorld {
 				// from its live pool inside update()); iterate a copy so none is skipped.
 				// Enemies don't self-remove in update() (death happens in resolveHits), so
 				// they iterate live and pass the live list for neighbour separation.
-				projectilesStore.list.slice().forEach((projectile) => projectile.update(STEP_DELTA, this.platforms))
+				projectilesStore.list
+					.slice()
+					.forEach((projectile) => projectile.update(STEP_DELTA, this.platforms))
 				xpGemsStore.list
 					.slice()
-					.forEach((gem) => gem.update(this.canvas, this.player, this.platforms, STEP_DELTA, this.magnetRadius))
+					.forEach((gem) =>
+						gem.update(this.canvas, this.player, this.platforms, STEP_DELTA, this.magnetRadius)
+					)
 				if (playing)
 					enemiesStore.list.forEach((enemy) =>
 						enemy.update(this.canvas, this.player, this.platforms, STEP_DELTA, enemiesStore.list)
 					)
-				if (playing) bombsStore.list.slice().forEach((bomb) => bomb.update(this.canvas, this.platforms, STEP_DELTA))
 				if (playing)
-					healthPacksStore.list.slice().forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
+					turretsStore.list.slice().forEach((t) => {
+						if (!t.update(this.platforms)) turretsStore.delete(t)
+					})
+				if (playing)
+					bombsStore.list
+						.slice()
+						.forEach((bomb) => bomb.update(this.canvas, this.platforms, STEP_DELTA))
+				if (playing)
+					healthPacksStore.list
+						.slice()
+						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
 				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
 				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
 				const target = playing ? nearestEnemy(this.player, this.platforms) : null
@@ -570,7 +718,7 @@ export class GameWorld {
 					if (target) {
 						if (this.playerFireCooldown > 0) this.playerFireCooldown--
 						else {
-							this.player.shoot()
+							this.playerAttack(target)
 							this.playerFireCooldown = this.fireSteps
 						}
 					}
@@ -605,6 +753,7 @@ export class GameWorld {
 		xpGemsStore.list.forEach((gem) => gem.draw(this.ctx, alpha))
 		healthPacksStore.list.forEach((pack) => pack.draw(this.ctx, alpha))
 		enemiesStore.list.forEach((enemy) => enemy.draw(this.ctx, animDelta, alpha))
+		turretsStore.list.forEach((t) => t.draw(this.ctx, animDelta))
 		bombsStore.list.forEach((bomb) => bomb.draw(this.ctx, alpha))
 		projectilesStore.list.forEach((projectile) => projectile.draw(this.ctx, alpha))
 		// Blink the player while invulnerable after a hit (but always show it paused).

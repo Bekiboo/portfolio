@@ -1,4 +1,5 @@
 import { writable, derived, get } from 'svelte/store'
+import { CHARACTERS, type PlayerKind } from '../routes/platformer-logic/characters'
 
 export type GameStatus = 'idle' | 'playing' | 'over'
 
@@ -6,6 +7,17 @@ export type GameStatus = 'idle' | 'playing' | 'over'
 // Clicks fire and the page text is unselectable only while 'playing'; movement,
 // jump and aim work regardless of status.
 export const gameStatus = writable<GameStatus>('idle')
+
+// Selected playable class (persists across runs — a preference, not per-run state, so
+// startRun() does NOT reset it). The selection UI writes it while idle; startRun seeds
+// HP from its config and GameWorld reconfigures the Player from it on the run's rising
+// edge. Defaults to the punk (the original character).
+export const character = writable<PlayerKind>('punk')
+
+/** Pick a class (idle-time selection UI + keyboard 1/2/3). */
+export function selectCharacter(kind: PlayerKind) {
+	character.set(kind)
+}
 
 // Convenience boolean used by the loop and layout: true only during an active run.
 export const gameStarted = derived(gameStatus, ($s) => $s === 'playing')
@@ -54,11 +66,12 @@ export function addXp(value: number): number {
 	return ups
 }
 
-/** Begin a fresh run: reset score + HP, then enter play mode. */
+/** Begin a fresh run: reset score, seed HP from the selected class, then play. */
 export function startRun() {
+	const hp = CHARACTERS[get(character)].maxHp
 	score.set(0)
-	maxHp.set(MAX_HP)
-	playerHp.set(MAX_HP)
+	maxHp.set(hp)
+	playerHp.set(hp)
 	wave.set(1)
 	xp.set(0)
 	level.set(1)

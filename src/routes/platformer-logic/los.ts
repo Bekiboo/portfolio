@@ -1,7 +1,9 @@
 import type { Enemy } from './Enemy'
-import type { Player } from './Player'
 import type { Platform } from './Platform'
 import { enemiesStore } from '$lib/stores'
+
+// Anything that aims: the player or a friendly turret. Only its centre matters.
+type AimSource = { pos: { x: number; y: number }; width: number; height: number }
 
 // Line-of-sight / auto-aim geometry. A shot travels in a straight line, so a
 // perched player must not keep dumping bolts into the platform they stand on —
@@ -51,15 +53,20 @@ const firingBlocked = (
 	return false
 }
 
-// Nearest enemy with a clear line of fire (no platform in the way), for auto-aim.
-// A perched player thus stops dumping shots into the platform they stand on and
-// engages reachable threats (e.g. flyers overhead) instead. null if none can be hit.
-export const nearestEnemy = (player: Player, platforms: Platform[]): Enemy | null => {
+// Nearest enemy with a clear line of fire (no platform in the way), within `maxDist`
+// (default unlimited). Used by the player's auto-aim and by friendly turrets. A perched
+// player thus stops dumping shots into the platform they stand on and engages reachable
+// threats (e.g. flyers overhead) instead. null if none can be hit.
+export const nearestEnemy = (
+	source: AimSource,
+	platforms: Platform[],
+	maxDist = Infinity
+): Enemy | null => {
 	const foes = enemiesStore.list
 	let best: Enemy | null = null
-	let bestD = Infinity
-	const px = player.pos.x + player.width / 2
-	const py = player.pos.y + player.height / 2
+	let bestD = maxDist * maxDist // squared, so anything past the range is skipped outright
+	const px = source.pos.x + source.width / 2
+	const py = source.pos.y + source.height / 2
 	for (const e of foes) {
 		const ex = e.pos.x + e.width / 2
 		const ey = e.pos.y + e.height / 2
