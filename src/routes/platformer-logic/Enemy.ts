@@ -25,7 +25,7 @@ const TURRET_FIRE_STEPS = 24 // hold on the recoil/attack frames after firing
 const TURRET_FLIP_CHANCE = 0.28 // chance to turn around after a burst
 const TURRET_BOLTS: number = 4 // bolts per directional fan
 const TURRET_SPREAD = 0.55 // half-arc of the fan (rad)
-const TURRET_BOLT_SPEED = 5
+const TURRET_BOLT_SPEED = 3.5
 const DRONE_ATTACK_STEPS = 22 // how long the drone holds its bomb-drop frames after a release
 const CHARGE_COOLDOWN = 150 // charger: steps between dashes
 const CHARGE_WIND = 16 // charger: telegraph wind-up before a dash
@@ -341,7 +341,7 @@ export class Enemy {
 		projectilesStore.add(
 			new Projectile({ x: originX, y: originY }, angle, 'blue', {
 				hostile: true,
-				speed: 6,
+				speed: 4.2,
 				damage: this.damage
 			})
 		)

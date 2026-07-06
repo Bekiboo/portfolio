@@ -44,7 +44,11 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 
 	ctx.font = '600 15px ui-monospace, monospace'
 	ctx.fillStyle = '#cbd5e1'
-	ctx.fillText(`WAVE ${get(wave)}   ·   LVL ${get(level)}   ·   SCORE ${get(score)}`, cx, gy + gH + 18)
+	ctx.fillText(
+		`WAVE ${get(wave)}   ·   LVL ${get(level)}   ·   SCORE ${get(score)}`,
+		cx,
+		gy + gH + 18
+	)
 
 	// XP-to-next-level progress bar (emerald) — fills as gems are banked.
 	const barW = 160
@@ -59,20 +63,28 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 	ctx.restore()
 }
 
-// Brief "WAVE N" flash when the difficulty steps up. `waveBanner` is the ms
-// remaining on the current banner (WAVE_BANNER_MS → 0).
+// Brief "WAVE N" flash (with the wave's theme name below) when the difficulty steps up.
+// `waveBanner` is the ms remaining on the current banner (WAVE_BANNER_MS → 0).
 export const drawWaveBanner = (
 	ctx: CanvasRenderingContext2D,
 	canvas: HTMLCanvasElement,
-	waveBanner: number
+	waveBanner: number,
+	label = ''
 ) => {
 	const t = waveBanner / WAVE_BANNER_MS // 1 → 0 over the banner's life
 	ctx.save()
 	ctx.globalAlpha = Math.min(1, t * 2) // hold, then fade out over the last half
 	ctx.textAlign = 'center'
 	ctx.textBaseline = 'middle'
+	const cx = canvas.width / 2
+	const cy = canvas.height * 0.26
 	ctx.fillStyle = '#f87171' // red-400
 	ctx.font = '700 34px ui-monospace, monospace'
-	ctx.fillText(`WAVE ${get(wave)}`, canvas.width / 2, canvas.height * 0.26)
+	ctx.fillText(`WAVE ${get(wave)}`, cx, cy)
+	if (label) {
+		ctx.fillStyle = '#fca5a5' // red-300
+		ctx.font = '600 15px ui-monospace, monospace'
+		ctx.fillText(label.toUpperCase(), cx, cy + 30)
+	}
 	ctx.restore()
 }

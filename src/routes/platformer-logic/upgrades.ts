@@ -6,14 +6,20 @@ import type { GameWorld } from './GameWorld.svelte'
 // and is bumped by the level-up upgrades below. The caps keep the snowball from
 // trivialising the game (an old build let a player stack 20 pinpoint projectiles
 // and vacuum the whole map).
-export const BASE_FIRE_STEPS = 20 // physics steps between shots (~3/s)
+export const BASE_FIRE_STEPS = 28 // physics steps between shots (~2/s — deliberately slow at lvl 1)
 export const BASE_INVULN = 72 // ~1.2s of i-frames after a hit
 export const BASE_MAGNET = 48 // XP-gem pickup radius (px) — small, so the player must sweep the floor
 export const BASE_SPEED = 5 // player move speed
 export const BASE_SPREAD = 0.07 // base weapon inaccuracy (radians of random deviation per bolt)
-export const MAX_MAGNET = 150 // hard cap on pickup radius
+export const BASE_PROJECTILE_SPEED = 8 // bolt travel speed at lvl 1 (slow; Velocity raises it)
+export const BASE_JUMP = 8 // jump velocity at lvl 1 (Spring raises it)
+export const MAX_MAGNET = 200 // hard cap on pickup radius
 export const MAX_PROJECTILES = 6 // hard cap on Multi-Shot
+export const MAX_PROJECTILE_SPEED = 16 // hard cap on bolt speed
+export const MAX_JUMP = 13 // hard cap on jump velocity
 export const MIN_FIRE_STEPS = 6 // hard floor on the fire cadence
+export const MIN_SPREAD = 0.01 // hard floor on inaccuracy (Focus can't go below this)
+export const REGEN_PER_STACK = 1 / 300 // one Regen stack = +1 HP / 5s (300 physics steps at 60Hz)
 export const BASE_REROLLS = 3 // rerolls granted per run (DRG-style agency without a shop)
 
 // On each level-up the game freezes and offers 3 of these at random. Most stack
@@ -34,26 +40,34 @@ export const UPGRADES: Upgrade[] = [
 	{ id: 'rapid', name: 'Rapid Fire', desc: "Cadence d'attaque +18%", kind: 'atk',
 		apply: (w) => (w.fireSteps = Math.max(MIN_FIRE_STEPS, Math.round(w.fireSteps * 0.82))),
 		available: (w) => w.fireSteps > MIN_FIRE_STEPS, weight: () => 3 }, // common: fire rate
+	{ id: 'velocity', name: 'Velocity', desc: 'Projectiles plus rapides (+2)', kind: 'atk',
+		apply: (w) => (w.player.projectileSpeed = Math.min(MAX_PROJECTILE_SPEED, w.player.projectileSpeed + 2)),
+		available: (w) => w.player.projectileSpeed < MAX_PROJECTILE_SPEED, weight: () => 3 },
 	{ id: 'multi', name: 'Multi-Shot', desc: '+1 projectile (mais disperse plus)', kind: 'atk',
 		apply: (w) => w.player.projectileCount++,
 		available: (w) => w.player.projectileCount < MAX_PROJECTILES,
 		weight: (lvl) => Math.max(1, 3 - Math.floor(lvl / 3)) }, // rarer the higher you climb
 	{ id: 'power', name: 'Power Shot', desc: '+1 dégât par attaque', kind: 'atk',
 		apply: (w) => w.player.damage++, weight: () => 2 },
-	{ id: 'focus', name: 'Focus', desc: 'Précision accrue (tir plus serré)', kind: 'atk',
-		apply: (w) => (w.player.spread = Math.max(0.015, w.player.spread - 0.02)),
-		available: (w) => w.player.spread > 0.02, weight: () => 3 },
+	// Rare but strong: each pick halves the spread — a couple of these make the weapon pinpoint.
+	{ id: 'focus', name: 'Focus', desc: 'Précision nettement accrue (dispersion ÷2)', kind: 'atk',
+		apply: (w) => (w.player.spread = Math.max(MIN_SPREAD, w.player.spread * 0.5)),
+		available: (w) => w.player.spread > MIN_SPREAD + 0.001, weight: () => 1 },
 	{ id: 'vitality', name: 'Vitality', desc: '+2 PV max (et soigne)', kind: 'def',
 		apply: () => { maxHp.update((m) => m + 2); playerHp.update((h) => h + 2) },
 		weight: (lvl) => Math.max(1, 2 - Math.floor(lvl / 4)) },
-	// (Healing is no longer an upgrade — enemies drop med-kits on the ground instead.)
-	{ id: 'iron', name: 'Iron Skin', desc: 'Invincibilité +30%', kind: 'def',
-		apply: (w) => (w.invulnSteps = Math.round(w.invulnSteps * 1.3)), weight: () => 3 },
-	{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +34', kind: 'util',
-		apply: (w) => (w.magnetRadius = Math.min(MAX_MAGNET, w.magnetRadius + 34)),
-		available: (w) => w.magnetRadius < MAX_MAGNET, weight: () => 2 },
+	// Passive heal, cumulable: each stack adds +1 HP / 5s (GameWorld.applyRegen banks it).
+	{ id: 'regen', name: 'Regen', desc: 'Régénération : +1 PV / 5 s (cumulable)', kind: 'def',
+		apply: (w) => (w.regenPerStep += REGEN_PER_STACK), weight: () => 2 },
+	// Bigger pull, rarer roll: a real commitment pick rather than chip value.
+	{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +50', kind: 'util',
+		apply: (w) => (w.magnetRadius = Math.min(MAX_MAGNET, w.magnetRadius + 50)),
+		available: (w) => w.magnetRadius < MAX_MAGNET, weight: () => 1 },
 	{ id: 'swift', name: 'Swift', desc: 'Vitesse de déplacement +', kind: 'util',
 		apply: (w) => (w.player.speed += 0.7), weight: () => 3 },
+	{ id: 'spring', name: 'Spring', desc: 'Saut plus haut', kind: 'util',
+		apply: (w) => (w.player.jumpStrength = Math.min(MAX_JUMP, w.player.jumpStrength + 1.2)),
+		available: (w) => w.player.jumpStrength < MAX_JUMP, weight: () => 2 },
 	{ id: 'greed', name: 'Greed', desc: '+1 XP par gemme', kind: 'util',
 		apply: (w) => (w.xpMul += 1), weight: (lvl) => Math.max(1, 2 - Math.floor(lvl / 5)) }
 ]

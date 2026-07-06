@@ -9,6 +9,17 @@ fluide, plus sympa** avant d'ajouter du contenu. Le système multi-perso a été
 
 Idées de polish / feel à explorer (à trier ensemble) :
 
+- [x] **Vagues à thèmes** (`waves.ts`) : courbe authored au lieu du ramp continu. Chaque
+  vague introduit **un** vecteur à la fois (bikers → volants → brute → tireurs → chargers →
+  tourelles → bombardiers), tir tard, avance de départ plus lente (base 2,6 × speedMul).
+  Table `WAVES` (1→10) + tail procédural borné ; nom du thème dans la bannière. Durée :
+  14s pour V1-V2 (on-ramp), **30s à partir de V3** (`waveDuration`). À tuner : les
+  `cap`/`interval`/`speedMul`/`floors` par vague. Thèmes plus poussés → quand on aura plus
+  d'ennemis.
+- [x] **Balance / bonus** : arme lvl 1 nerfée (cadence 28, projectiles lents à 8) ; tirs
+  ennemis à 70% ; bombes de drone bien plus visibles (anneau d'alerte). Bonus revus dans
+  `upgrades.ts` : +Velocity (proj. rapides), +Regen (1 PV/5s cumulable), +Spring (saut) ;
+  Focus rare & fort (÷2 dispersion), Magnet costaud & rare (+50) ; Iron (invuln) retiré.
 - [ ] Feedback de tir (recul, muzzle flash, screenshake léger).
 - [ ] Feedback d'impact / de mort plus lisible.
 - [ ] Feel du déplacement (accel/decel, coyote time, saut).

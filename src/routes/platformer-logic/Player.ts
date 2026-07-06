@@ -27,6 +27,8 @@ export class Player {
 	projectileCount = 1 // bolts per shot (Multi-Shot upgrade)
 	damage = 1 // damage per bolt (Power Shot upgrade)
 	spread = 0.07 // base weapon inaccuracy: ± radians of random deviation per bolt (Focus lowers it)
+	projectileSpeed = 8 // bolt travel speed (Velocity upgrade raises it); reset from cfg each run
+	jumpStrength = 8 // upward jump velocity (Spring upgrade raises it); reset each run
 	isFalling = false
 	jumpAvailable = 2
 	status = 'idle'
@@ -197,7 +199,7 @@ export class Player {
 					{ x: cx + Math.cos(a) * weaponLength, y: cy + Math.sin(a) * weaponLength },
 					a,
 					'blue',
-					{ damage: this.damage }
+					{ damage: this.damage, speed: this.projectileSpeed }
 				)
 			)
 		}
@@ -258,7 +260,7 @@ export class Player {
 			effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 48 }, 'smoke_12'))
 		}
 		this.#playerSprite('jump')
-		this.velocity.y = -8
+		this.velocity.y = -this.jumpStrength
 		this.isFalling = true
 		this.jumpAvailable--
 	}

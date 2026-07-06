@@ -29,11 +29,14 @@ export interface CharacterType {
 	projectileCount: number // bolts per shot before Multi-Shot
 	damage: number // damage per bolt (Power Shot bumps it)
 	spread: number // ranged inaccuracy (radians of random deviation per bolt)
+	projectileSpeed: number // bolt travel speed (px/step before the Velocity upgrade)
 }
 
 export const CHARACTERS: Record<PlayerKind, CharacterType> = {
+	// Deliberately weak at level 1 — a slow cadence and slow bolts. The level-up upgrades
+	// (Rapid Fire, Velocity, Focus…) are what turn it into a real weapon; that ramp is the fun.
 	punk: {
 		kind: 'punk', name: 'Punk', sprite: 'punk', attackStyle: 'ranged',
-		maxHp: 10, speed: 5, fireSteps: 20, projectileCount: 1, damage: 1, spread: 0.07
+		maxHp: 10, speed: 5, fireSteps: 28, projectileCount: 1, damage: 1, spread: 0.07, projectileSpeed: 8
 	}
 }

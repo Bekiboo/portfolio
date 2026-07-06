@@ -19,15 +19,13 @@ import { collision } from './utils'
 import { keys } from './controller'
 import { gameStatus, score, playerHp, maxHp, wave, addXp, gameOver, stopRun } from '$lib/game'
 import {
-	WAVE_DURATION,
+	waveDuration,
+	waveDef,
 	waveSpawnInterval,
 	waveEnemyCap,
 	waveEnemySpeed,
-	chargerChance,
 	waveEnemyHealth,
-	waveContactDamage,
-	PRESSURE_KINDS,
-	ELITE_KINDS
+	waveContactDamage
 } from './waves'
 import { drawHud, drawWaveBanner, WAVE_BANNER_MS } from './hud'
 import { nearestEnemy } from './los'
@@ -36,6 +34,7 @@ import {
 	BASE_FIRE_STEPS,
 	BASE_INVULN,
 	BASE_MAGNET,
+	BASE_JUMP,
 	BASE_REROLLS,
 	type Upgrade
 } from './upgrades'
@@ -80,6 +79,8 @@ export class GameWorld {
 	invulnSteps = BASE_INVULN
 	magnetRadius = BASE_MAGNET
 	xpMul = 1 // XP banked per gem
+	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
+	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
 
 	// --- Level-up pick state (read by the Svelte template, hence reactive) ---
 	// gameStatus stays 'playing' during the pick (so the field isn't cleared); these
@@ -97,6 +98,7 @@ export class GameWorld {
 	private dimAlpha = 0 // eased screen-dim while playing (focus mode)
 	private waveTimer = 0 // ms elapsed in the current wave
 	private waveBanner = 0 // ms remaining on the current banner
+	private waveBannerLabel = '' // theme name shown on the current banner
 
 	// --- Lifecycle -----------------------------------------------------------
 	mount(canvas: HTMLCanvasElement) {
@@ -182,17 +184,37 @@ export class GameWorld {
 	// --- Upgrades -------------------------------------------------------------
 	private resetUpgrades() {
 		// Base stats come from the active class (Player.cfg); the level-up upgrades bump
-		// them from here. Invuln + magnet aren't class-specific in v1, so they keep their
-		// global baselines.
+		// them from here. Invuln, magnet, regen and jump aren't class-specific in v1, so
+		// they keep their global baselines.
 		const c = this.player.cfg
 		this.fireSteps = c.fireSteps
 		this.invulnSteps = BASE_INVULN
 		this.magnetRadius = BASE_MAGNET
 		this.xpMul = 1
+		this.regenPerStep = 0
+		this.regenAccum = 0
 		this.player.speed = c.speed
 		this.player.projectileCount = c.projectileCount
 		this.player.damage = c.damage
 		this.player.spread = c.spread
+		this.player.projectileSpeed = c.projectileSpeed
+		this.player.jumpStrength = BASE_JUMP
+	}
+
+	// Passive regeneration (Regen upgrade): heal fractional HP each step, carrying the
+	// remainder so a sub-1-HP-per-step rate still lands whole hearts. Caps at max HP.
+	private applyRegen() {
+		const cap = get(maxHp)
+		if (get(playerHp) >= cap) {
+			this.regenAccum = 0
+			return
+		}
+		this.regenAccum += this.regenPerStep
+		if (this.regenAccum >= 1) {
+			const heal = Math.floor(this.regenAccum)
+			this.regenAccum -= heal
+			playerHp.update((h) => Math.min(cap, h + heal))
+		}
 	}
 
 	// Spend a reroll to redraw the current choices (no-op when none are left).
@@ -253,20 +275,22 @@ export class GameWorld {
 	// has clogged it with unreachable ground units, retire the one stuck furthest
 	// below the player and swap in the missing pressure type — no spot stays safe.
 	private spawnFromBudget() {
-		const w = get(wave)
+		const def = waveDef(get(wave))
 		const list = enemiesStore.list
 		const count = (k: EnemyKind) => list.filter((e) => e.kind === k).length
-		// Among the pressure types below their floor, pick one weighted by how far
-		// below it sits. Weighting by the deficit — rather than always taking the
-		// first unmet floor — stops a low-priority type (the bomber, last in the
-		// list) from starving forever: while the player keeps culling the flyers and
-		// shooters ahead of it, the strict-order version never climbed to the bomber
-		// rung. A totally-absent bomber (deficit 2) now outweighs a flyer that's just
-		// one short (deficit 1), so every vector eventually shows up.
-		const deficits = PRESSURE_KINDS.map((kind) => ({
-			kind,
-			need: ENEMY_TYPES[kind].floor!(w) - count(kind)
-		})).filter((p) => p.need > 0)
+		// Among this wave's pressure floors below their target, pick one weighted by how
+		// far below it sits. Weighting by the deficit — rather than always taking the
+		// first unmet floor — stops a low-priority vector (the bomber) from starving
+		// forever: while the player keeps culling the flyers and shooters ahead of it, a
+		// strict-order version never climbs to the bomber rung. A totally-absent bomber
+		// (deficit 2) now outweighs a flyer that's just one short (deficit 1), so every
+		// vector the theme calls for eventually shows up.
+		const deficits = Object.entries(def.floors ?? {})
+			.map(([kind, target]) => ({
+				kind: kind as EnemyKind,
+				need: target - count(kind as EnemyKind)
+			}))
+			.filter((p) => p.need > 0)
 		let missing: EnemyKind | null = null
 		if (deficits.length) {
 			let r = Math.random() * deficits.reduce((s, p) => s + p.need, 0)
@@ -279,10 +303,15 @@ export class GameWorld {
 				}
 			}
 		}
-		const groundKind: EnemyKind = Math.random() < chargerChance(w) ? 'charger' : 'biker'
+		// Fodder to fill the rest of the cap: drawn from the theme's ground pool (repeats
+		// weight the odds — e.g. ['biker','biker','charger'] is 2:1 bikers).
+		const groundKind: EnemyKind | null = def.ground.length
+			? def.ground[Math.floor(Math.random() * def.ground.length)]
+			: null
 
-		if (list.length < waveEnemyCap(w)) {
-			this.spawnEnemy(missing ?? groundKind)
+		if (list.length < def.cap) {
+			const pick = missing ?? groundKind
+			if (pick) this.spawnEnemy(pick)
 		} else if (missing) {
 			// Field is capped and a pressure type is missing: retire the cullable ground
 			// unit stuck furthest below the player to free a slot for the missing vector.
@@ -510,7 +539,9 @@ export class GameWorld {
 			this.spawnTimer = 0
 			this.invuln = 0
 			this.waveTimer = 0
-			this.waveBanner = 0
+			// Open on the wave-1 theme banner so the first encounter is announced too.
+			this.waveBanner = WAVE_BANNER_MS
+			this.waveBannerLabel = waveDef(get(wave)).label
 		}
 		this.wasPlaying = playing
 
@@ -526,20 +557,15 @@ export class GameWorld {
 		// cap. Frozen while a pick is open; the field is cleared once truly stopped.
 		if (playing && !paused) {
 			this.waveTimer += frameTime
-			if (this.waveTimer >= WAVE_DURATION) {
-				this.waveTimer -= WAVE_DURATION
+			if (this.waveTimer >= waveDuration(get(wave))) {
+				this.waveTimer -= waveDuration(get(wave))
 				wave.update((w) => w + 1)
+				const def = waveDef(get(wave))
 				this.waveBanner = WAVE_BANNER_MS
-				// Elite kinds re-anchor each new wave from their `fromWave` (at most one
-				// alive): slow bullet-sponges that drop a fat gem and reward focus fire.
-				const cur = get(wave)
-				for (const kind of ELITE_KINDS) {
-					if (
-						cur >= ENEMY_TYPES[kind].elite!.fromWave &&
-						!enemiesStore.list.some((e) => e.kind === kind)
-					)
-						this.spawnEnemy(kind)
-				}
+				this.waveBannerLabel = def.label
+				// A themed wave can open with an elite: a slow bullet-sponge that drops a
+				// fat gem and rewards focus fire, spawned once as the wave begins.
+				if (def.eliteAtStart) this.spawnEnemy(def.eliteAtStart)
 			}
 			this.spawnTimer += frameTime
 			if (this.spawnTimer >= waveSpawnInterval(get(wave))) {
@@ -600,6 +626,7 @@ export class GameWorld {
 					this.resolveHits()
 					this.resolveGemPickups()
 					this.resolveHealthPickups()
+					if (this.regenPerStep > 0) this.applyRegen()
 					if (this.invuln > 0) this.invuln--
 					this.resolvePlayerDamage()
 					this.resolveEnemyShots()
@@ -639,7 +666,8 @@ export class GameWorld {
 
 		if (playing) {
 			drawHud(this.ctx, this.canvas)
-			if (this.waveBanner > 0) drawWaveBanner(this.ctx, this.canvas, this.waveBanner)
+			if (this.waveBanner > 0)
+				drawWaveBanner(this.ctx, this.canvas, this.waveBanner, this.waveBannerLabel)
 		}
 		if (this.waveBanner > 0) this.waveBanner -= frameTime
 

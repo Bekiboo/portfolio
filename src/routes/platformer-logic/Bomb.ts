@@ -112,13 +112,26 @@ export class Bomb {
 		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha + this.width / 2
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha + this.height / 2
 		ctx.save()
-		// A fuse that pulses brighter the closer it is to impact reads as "incoming".
+		// A high-contrast warning read: a pulsing outer ring makes the incoming bomb easy
+		// to track over the busy CV, and a bright warm body (not the old dark-gray casing)
+		// stands out against both light and dark backgrounds.
 		const pulse = Math.floor(this.age / 5) % 2 === 0
-		ctx.fillStyle = '#1f2937' // gray-800 casing
-		ctx.shadowColor = pulse ? '#f97316' : '#7c2d12' // orange-500 fuse pulse
-		ctx.shadowBlur = pulse ? 12 : 5
+		const r = this.width / 2
+		ctx.beginPath() // pulsing warning ring
+		ctx.strokeStyle = pulse ? 'rgba(248, 113, 113, 0.9)' : 'rgba(248, 113, 113, 0.35)' // red-400
+		ctx.lineWidth = 2
+		ctx.arc(x, y, r + (pulse ? 7 : 4), 0, Math.PI * 2)
+		ctx.stroke()
+		ctx.shadowColor = '#f97316' // orange-500 glow, always on
+		ctx.shadowBlur = pulse ? 14 : 9
+		ctx.fillStyle = '#f87171' // red-400 body
 		ctx.beginPath()
-		ctx.arc(x, y, this.width / 2, 0, Math.PI * 2)
+		ctx.arc(x, y, r, 0, Math.PI * 2)
+		ctx.fill()
+		ctx.shadowBlur = 0
+		ctx.fillStyle = '#fde68a' // amber-200 hot core
+		ctx.beginPath()
+		ctx.arc(x, y, r * 0.45, 0, Math.PI * 2)
 		ctx.fill()
 		ctx.restore()
 	}
