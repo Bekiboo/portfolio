@@ -35,6 +35,8 @@ import {
 	BASE_INVULN,
 	BASE_MAGNET,
 	BASE_JUMP,
+	BASE_SHIELD_MAX,
+	BASE_SHIELD_REGEN,
 	BASE_REROLLS,
 	type Upgrade
 } from './upgrades'
@@ -46,6 +48,7 @@ import {
 const FIXED_STEP = 1000 / 60 // physics tick length (ms)
 const STEP_DELTA = FIXED_STEP / 12 // delta unit expected by the entities
 const MAX_FRAME_TIME = 100 // clamp accumulated time to avoid a spiral after the tab was hidden
+const SHIELD_FLASH_STEPS = 12 // steps the shield break/absorb ring is drawn
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -81,6 +84,15 @@ export class GameWorld {
 	xpMul = 1 // XP banked per gem
 	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
 	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
+	// Base shield: a bubble that soaks incoming hits. Each hit spends a charge (no HP
+	// lost) and breaks the bubble briefly; a charge regenerates every shieldRegenSteps,
+	// and any incoming damage resets that timer (no regen while under fire).
+	shieldMax = BASE_SHIELD_MAX // charges when full (Bulwark raises it)
+	shieldCharges = BASE_SHIELD_MAX // current charges (each absorbs one hit)
+	shieldRegenSteps = BASE_SHIELD_REGEN // steps to regen one charge (Recharge lowers it)
+	private shieldRegenTimer = 0 // steps since the last hit / last regen tick
+	private shieldFlash = 0 // steps left on the break/absorb ring VFX
+	private shieldFlashBig = false // was the last flash a full break (bigger ring)?
 
 	// --- Level-up pick state (read by the Svelte template, hence reactive) ---
 	// gameStatus stays 'playing' during the pick (so the field isn't cleared); these
@@ -193,6 +205,11 @@ export class GameWorld {
 		this.xpMul = 1
 		this.regenPerStep = 0
 		this.regenAccum = 0
+		this.shieldMax = BASE_SHIELD_MAX
+		this.shieldCharges = BASE_SHIELD_MAX
+		this.shieldRegenSteps = BASE_SHIELD_REGEN
+		this.shieldRegenTimer = 0
+		this.shieldFlash = 0
 		this.player.speed = c.speed
 		this.player.projectileCount = c.projectileCount
 		this.player.damage = c.damage
@@ -395,13 +412,72 @@ export class GameWorld {
 	}
 
 	// Take `amount` damage + i-frames; 0 HP ends the run. Shared by contact, shots
-	// and bomb blasts (each passes its own scaled damage).
+	// and bomb blasts (each passes its own scaled damage). The base shield soaks the hit
+	// first: a charge is spent (no HP lost) and the bubble breaks briefly instead.
 	private damagePlayer(amount = 1) {
+		this.shieldRegenTimer = 0 // any incoming damage stalls shield regen
+		if (this.shieldCharges > 0) {
+			this.shieldCharges--
+			this.invuln = this.invulnSteps
+			this.shieldFlash = SHIELD_FLASH_STEPS
+			this.shieldFlashBig = this.shieldCharges === 0 // full break reads bigger
+			return
+		}
 		const hp = get(playerHp) - amount
 		playerHp.set(hp)
 		this.invuln = this.invulnSteps
 		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
 		if (hp <= 0) gameOver()
+	}
+
+	// Regenerate the shield: one charge every shieldRegenSteps while below max and not
+	// recently hit (damagePlayer resets the timer). The flash VFX ticks down each step.
+	private updateShield() {
+		if (this.shieldFlash > 0) this.shieldFlash--
+		if (this.shieldCharges >= this.shieldMax) return
+		this.shieldRegenTimer++
+		if (this.shieldRegenTimer >= this.shieldRegenSteps) {
+			this.shieldCharges++
+			this.shieldRegenTimer = 0
+		}
+	}
+
+	// Draw the shield bubble around the player (interpolated position): a steady faint
+	// ring while it has charges, plus an expanding burst on a break/absorb.
+	private drawShield(alpha: number) {
+		const px = this.player.prevPos.x + (this.player.pos.x - this.player.prevPos.x) * alpha
+		const py = this.player.prevPos.y + (this.player.pos.y - this.player.prevPos.y) * alpha
+		const cx = px + this.player.width / 2
+		const cy = py + this.player.height / 2
+		const baseR = this.player.width * 0.72
+		const ctx = this.ctx
+		if (this.shieldFlash > 0) {
+			const t = 1 - this.shieldFlash / SHIELD_FLASH_STEPS // 0 → 1 over the burst
+			ctx.save()
+			ctx.globalAlpha = Math.max(0, 1 - t)
+			ctx.strokeStyle = '#67e8f9' // cyan-300
+			ctx.lineWidth = this.shieldFlashBig ? 4 : 2
+			ctx.beginPath()
+			ctx.arc(cx, cy, baseR + (this.shieldFlashBig ? 42 : 22) * t, 0, Math.PI * 2)
+			ctx.stroke()
+			ctx.restore()
+		}
+		if (this.shieldCharges > 0) {
+			const strength = this.shieldCharges / Math.max(1, this.shieldMax)
+			ctx.save()
+			ctx.strokeStyle = '#38bdf8' // sky-400
+			ctx.shadowColor = '#38bdf8'
+			ctx.shadowBlur = 8
+			ctx.lineWidth = 2
+			ctx.globalAlpha = 0.14 + 0.16 * strength
+			ctx.beginPath()
+			ctx.arc(cx, cy, baseR, 0, Math.PI * 2)
+			ctx.stroke()
+			ctx.globalAlpha = 0.05 + 0.05 * strength // faint fill so it reads as a bubble
+			ctx.fillStyle = '#38bdf8'
+			ctx.fill()
+			ctx.restore()
+		}
 	}
 
 	// Enemy contact → player takes a hit (unless in i-frames).
@@ -627,6 +703,7 @@ export class GameWorld {
 					this.resolveGemPickups()
 					this.resolveHealthPickups()
 					if (this.regenPerStep > 0) this.applyRegen()
+					this.updateShield()
 					if (this.invuln > 0) this.invuln--
 					this.resolvePlayerDamage()
 					this.resolveEnemyShots()
@@ -661,6 +738,8 @@ export class GameWorld {
 		if (paused || this.invuln <= 0 || Math.floor(this.invuln / 6) % 2 === 0) {
 			this.player.draw(this.ctx, animDelta, alpha)
 		}
+		// Shield bubble over the player (only in an active run, so idle shows none).
+		if (playing) this.drawShield(alpha)
 		// Snapshot: Effect.draw() self-removes from the live pool when its animation ends.
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
 

@@ -20,6 +20,11 @@ Idées de polish / feel à explorer (à trier ensemble) :
   ennemis à 70% ; bombes de drone bien plus visibles (anneau d'alerte). Bonus revus dans
   `upgrades.ts` : +Velocity (proj. rapides), +Regen (1 PV/5s cumulable), +Spring (saut) ;
   Focus rare & fort (÷2 dispersion), Magnet costaud & rare (+50) ; Iron (invuln) retiré.
+- [x] **Bouclier de base** : bulle qui absorbe 1 coup (base), éclate brièvement, régénère
+  1 charge / 8s (timer remis à zéro à chaque dégât). Interception centralisée dans
+  `GameWorld.damagePlayer` (couvre contact/tirs/bombes). Bonus `bulwark` (+1 charge, cap 4)
+  & `recharge` (+20% vitesse, plancher 3s). Idées suivantes : reflet de projectile, charge
+  qui explose en dégâts de zone au break.
 - [ ] Feedback de tir (recul, muzzle flash, screenshake léger).
 - [ ] Feedback d'impact / de mort plus lisible.
 - [ ] Feel du déplacement (accel/decel, coyote time, saut).

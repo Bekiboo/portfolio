@@ -13,7 +13,6 @@
 	drawn by GameWrapper so they sit above the focus-mode veil. Desktop only.
 -->
 <div class="hidden select-none lg:block">
-	{#if $gameStatus === 'idle'}
 		<div class="mb-3 space-y-1.5 text-slate-500" aria-hidden="true">
 			<div class="flex items-center gap-1">
 				<kbd class="hub-key">W</kbd>

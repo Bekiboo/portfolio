@@ -13,6 +13,10 @@ export const BASE_SPEED = 5 // player move speed
 export const BASE_SPREAD = 0.07 // base weapon inaccuracy (radians of random deviation per bolt)
 export const BASE_PROJECTILE_SPEED = 8 // bolt travel speed at lvl 1 (slow; Velocity raises it)
 export const BASE_JUMP = 8 // jump velocity at lvl 1 (Spring raises it)
+export const BASE_SHIELD_MAX = 1 // shield charges when full (each absorbs one hit)
+export const BASE_SHIELD_REGEN = 480 // steps to regen one shield charge (~8s at 60Hz)
+export const MAX_SHIELD_MAX = 4 // hard cap on shield charges
+export const MIN_SHIELD_REGEN = 180 // fastest shield regen (~3s)
 export const MAX_MAGNET = 200 // hard cap on pickup radius
 export const MAX_PROJECTILES = 6 // hard cap on Multi-Shot
 export const MAX_PROJECTILE_SPEED = 16 // hard cap on bolt speed
@@ -59,6 +63,14 @@ export const UPGRADES: Upgrade[] = [
 	// Passive heal, cumulable: each stack adds +1 HP / 5s (GameWorld.applyRegen banks it).
 	{ id: 'regen', name: 'Regen', desc: 'Régénération : +1 PV / 5 s (cumulable)', kind: 'def',
 		apply: (w) => (w.regenPerStep += REGEN_PER_STACK), weight: () => 2 },
+	// Shield capacity: one more hit absorbed before it breaks (and refills immediately).
+	{ id: 'bulwark', name: 'Bulwark', desc: 'Bouclier : +1 charge (absorbe un coup de plus)', kind: 'def',
+		apply: (w) => { w.shieldMax = Math.min(MAX_SHIELD_MAX, w.shieldMax + 1); w.shieldCharges++ },
+		available: (w) => w.shieldMax < MAX_SHIELD_MAX, weight: () => 2 },
+	// Shield recharge speed: the broken shield comes back sooner.
+	{ id: 'recharge', name: 'Recharge', desc: 'Bouclier : recharge +20% plus vite', kind: 'def',
+		apply: (w) => (w.shieldRegenSteps = Math.max(MIN_SHIELD_REGEN, Math.round(w.shieldRegenSteps * 0.8))),
+		available: (w) => w.shieldRegenSteps > MIN_SHIELD_REGEN, weight: () => 2 },
 	// Bigger pull, rarer roll: a real commitment pick rather than chip value.
 	{ id: 'magnet', name: 'Magnet', desc: 'Rayon de ramassage +50', kind: 'util',
 		apply: (w) => (w.magnetRadius = Math.min(MAX_MAGNET, w.magnetRadius + 50)),
