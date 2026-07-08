@@ -7,12 +7,19 @@
 		wave,
 		xp,
 		level,
-		startRun,
 		stopRun,
 		paused,
-		resumeGame
+		resumeGame,
+		weaponSelectOpen,
+		requestLaunch,
+		launchWith,
+		cancelLaunch
 	} from '$lib/game'
+	import { WEAPON_TYPES } from './platformer-logic/weaponTypes'
 	import Button from './components/Button.svelte'
+
+	// The starting-weapon choices, in a stable order for the launch picker (keys 1–4).
+	const weaponList = Object.values(WEAPON_TYPES)
 
 	// Fixed full-viewport canvas overlay (pointer-events: none) that renders the
 	// background platformer. It sits on top of the page content but never wraps it,
@@ -23,13 +30,29 @@
 	let canvasEl: HTMLCanvasElement
 	const world = new GameWorld()
 
+	// While the launch picker is open, number keys pick the starter and Escape cancels;
+	// otherwise keys go to the game. (The mid-run milestone picker is handled in GameWorld.)
+	const PICK_KEYS: Record<string, number> = {
+		Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1,
+		Digit3: 2, Numpad3: 2, Digit4: 3, Numpad4: 3
+	}
+	function onKeyDown(e: KeyboardEvent) {
+		if ($weaponSelectOpen) {
+			const idx = PICK_KEYS[e.code]
+			if (idx !== undefined && idx < weaponList.length) launchWith(weaponList[idx].kind)
+			else if (e.code === 'Escape') cancelLaunch()
+			return
+		}
+		world.handleKeyDown(e)
+	}
+
 	onMount(() => world.mount(canvasEl))
 	onDestroy(() => world.destroy())
 </script>
 
 <canvas bind:this={canvasEl} class="z-10"></canvas>
 
-{#if $gameStatus === 'over'}
+{#if $gameStatus === 'over' && !$weaponSelectOpen}
 	<div class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
 		<div class="game-over pointer-events-auto select-none text-center">
 			<div class="font-bauhaus text-3xl font-bold tracking-widest text-red-500">GAME OVER</div>
@@ -41,7 +64,7 @@
 				XP <span class="text-emerald-400">{$xp}</span>
 			</div>
 			<div class="mt-4 flex flex-col items-center gap-2">
-				<button onclick={startRun} aria-label="Restart the game">
+				<button onclick={requestLaunch} aria-label="Restart the game">
 					<Button text="RESTART" classes="uppercase" />
 				</button>
 				<button
@@ -91,8 +114,19 @@
 	     not the Start/Stop hub behind it. Forces a pick before play resumes. -->
 	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
 		<div class="level-up text-center">
-			<div class="font-bauhaus text-2xl font-bold tracking-widest text-emerald-400">LEVEL UP</div>
-			<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">NIVEAU {$level}</div>
+			{#if world.isWeaponMilestone}
+				<div class="font-bauhaus text-2xl font-bold tracking-widest text-fuchsia-400">
+					NOUVELLE ARME
+				</div>
+				<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">
+					Choisis ta deuxième arme
+				</div>
+			{:else}
+				<div class="font-bauhaus text-2xl font-bold tracking-widest text-emerald-400">
+					LEVEL UP
+				</div>
+				<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">NIVEAU {$level}</div>
+			{/if}
 			<div class="mt-4 flex flex-col gap-2">
 				{#each world.choices as choice, i (choice.id)}
 					<button class="upgrade" data-kind={choice.kind} onclick={() => world.chooseUpgrade(choice)}>
@@ -104,23 +138,63 @@
 					</button>
 				{/each}
 			</div>
+			{#if !world.isWeaponMilestone}
+				<button
+					class="reroll"
+					onclick={() => world.reroll()}
+					disabled={world.rerolls <= 0}
+					aria-label="Relancer les choix"
+				>
+					↻ Relancer <span class="reroll-count">{world.rerolls}</span>
+				</button>
+				<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+					Clic ou touches 1 · 2 · 3 · R relance
+				</div>
+			{:else}
+				<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+					Clic ou touches 1 · 2 · 3 — définitif
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}
+
+{#if $weaponSelectOpen}
+	<!-- Pre-run starting-weapon picker. Choosing one commits the starter and begins the run;
+	     the second weapon is earned later at the level milestone. -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
+		<div class="level-up text-center">
+			<div class="font-bauhaus text-2xl font-bold tracking-widest text-fuchsia-400">
+				ARME DE DÉPART
+			</div>
+			<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">Choisis ton arme</div>
+			<div class="mt-4 flex flex-col gap-2">
+				{#each weaponList as weapon, i (weapon.kind)}
+					<button class="upgrade" data-kind="weapon" onclick={() => launchWith(weapon.kind)}>
+						<span class="key">{i + 1}</span>
+						<span class="flex flex-col items-start">
+							<span class="name">{weapon.name}</span>
+							<span class="desc">{weapon.blurb}</span>
+						</span>
+					</button>
+				{/each}
+			</div>
 			<button
-				class="reroll"
-				onclick={() => world.reroll()}
-				disabled={world.rerolls <= 0}
-				aria-label="Relancer les choix"
+				onclick={cancelLaunch}
+				class="mt-3 text-xs tracking-widest text-slate-500 uppercase transition hover:text-slate-300"
+				aria-label="Annuler"
 			>
-				↻ Relancer <span class="reroll-count">{world.rerolls}</span>
+				Annuler
 			</button>
-			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
-				Clic ou touches 1 · 2 · 3 · R relance
+			<div class="mt-2 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+				Clic ou touches 1 · 2 · 3 · 4
 			</div>
 		</div>
 	</div>
 {/if}
 
 <svelte:window
-	onkeydown={(e) => world.handleKeyDown(e)}
+	onkeydown={onKeyDown}
 	onkeyup={(e) => world.handleKeyUp(e)}
 	onscroll={() => world.markDirty()}
 	onresize={() => world.markDirty()}
@@ -221,6 +295,14 @@
 	}
 	.upgrade[data-kind='util'] .key {
 		color: rgb(52 211 153);
+	}
+	/* Weapon-milestone cards: fuchsia, and beefier since it's a rare, permanent pick. */
+	.upgrade[data-kind='weapon'] {
+		border-color: rgb(232 121 249 / 0.6); /* fuchsia-400 */
+		background: rgb(112 26 117 / 0.25);
+	}
+	.upgrade[data-kind='weapon'] .key {
+		color: rgb(232 121 249);
 	}
 	.reroll {
 		margin-top: 0.75rem;

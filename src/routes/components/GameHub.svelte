@@ -1,10 +1,11 @@
 <script lang="ts">
 	import Button from './Button.svelte'
-	import { gameStatus, startRun, pauseGame } from '$lib/game'
+	import { gameStatus, requestLaunch, pauseGame } from '$lib/game'
 
 	// While playing, the button pauses (opens the Continue/Quit modal — same as Escape)
-	// rather than stopping outright; from idle it starts a run.
-	const toggle = () => ($gameStatus === 'playing' ? pauseGame() : startRun())
+	// rather than stopping outright; from idle it opens the starting-weapon picker (which
+	// then begins the run).
+	const toggle = () => ($gameStatus === 'playing' ? pauseGame() : requestLaunch())
 </script>
 
 <!--

@@ -59,8 +59,14 @@ const sprites: SpriteData = {
 		smoke_12: { frames: 4, speed: 5, img: loadImage('/sprites/Effects/Smoke/12.png') },
 		smoke_14: { frames: 6, speed: 5, img: loadImage('/sprites/Effects/Smoke/14.png'), width: 48, height: 48 }
 	},
+	// Weapon skins (referenced by WEAPON_TYPES.sprite). Guns/Rifles each ship 10 skins ×
+	// 2 frames in the archive; only the equipped ones are loaded here. Frame _1 is the
+	// resting pose (a _2 muzzle-flash frame swap is a later polish pass).
 	weapon: {
-		gun_1: { img: loadImage('/sprites/Weapons/Guns/7_1.png') }
+		gun_1: { img: loadImage('/sprites/Weapons/Guns/7_1.png') }, // pistol
+		gun_2: { img: loadImage('/sprites/Weapons/Guns/2_1.png') }, // shotgun
+		gun_3: { img: loadImage('/sprites/Weapons/Guns/3_1.png') }, // smg
+		rifle_1: { img: loadImage('/sprites/Weapons/Rifles/1_1.png') } // rifle
 	},
 	hand: {
 		punk_3: { img: loadImage('/sprites/Hands/Punk/3.png') }

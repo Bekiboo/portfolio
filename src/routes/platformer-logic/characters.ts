@@ -10,6 +10,8 @@
 // registry + attackStyle dispatch is kept as the seam so re-adding a class is just another
 // entry here plus wiring its attackStyle case.
 
+import type { WeaponKind } from './weaponTypes'
+
 export type PlayerKind = 'punk'
 
 // How a class deals damage — mapped to an attack routine in GameWorld.playerAttack. Only
@@ -21,22 +23,20 @@ export interface CharacterType {
 	name: string // display name
 	sprite: string // sprite-sheet key in spritesData
 	attackStyle: AttackStyle // which combat system the loop dispatches
-	// Base run stats — GameWorld.resetUpgrades restores these each run (the level-up
-	// upgrades bump from here); maxHp seeds the HP store in startRun().
+	// A character is a chassis: body stats live here, firepower lives in its weapon(s).
+	// GameWorld.resetUpgrades restores these each run; maxHp seeds the HP store in startRun().
 	maxHp: number
 	speed: number // horizontal move speed
-	fireSteps: number // steps between shots
-	projectileCount: number // bolts per shot before Multi-Shot
-	damage: number // damage per bolt (Power Shot bumps it)
-	spread: number // ranged inaccuracy (radians of random deviation per bolt)
-	projectileSpeed: number // bolt travel speed (px/step before the Velocity upgrade)
+	// Weapons equipped at run start (WEAPON_TYPES keys). One rides centred; a milestone can
+	// grant a second mid-run (Player.equip), which splits the pair left/right.
+	weapons: WeaponKind[]
 }
 
 export const CHARACTERS: Record<PlayerKind, CharacterType> = {
-	// Deliberately weak at level 1 — a slow cadence and slow bolts. The level-up upgrades
-	// (Rapid Fire, Velocity, Focus…) are what turn it into a real weapon; that ramp is the fun.
+	// Starts with a single Pistolet; the second weapon is earned at a level milestone
+	// (WEAPON_MILESTONE_LEVEL in GameWorld — a special choose-your-weapon card).
 	punk: {
 		kind: 'punk', name: 'Punk', sprite: 'punk', attackStyle: 'ranged',
-		maxHp: 10, speed: 5, fireSteps: 28, projectileCount: 1, damage: 1, spread: 0.07, projectileSpeed: 8
+		maxHp: 10, speed: 5, weapons: ['pistol']
 	}
 }

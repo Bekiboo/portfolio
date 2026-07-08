@@ -5,6 +5,7 @@ import { Enemy } from './Enemy'
 import { XpGem } from './XpGem'
 import { HealthPack } from './HealthPack'
 import { Effect } from './Effect'
+import { Portal, type PortalPlacement } from './Portal'
 import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
 import { CHARACTERS } from './characters'
 import {
@@ -13,7 +14,8 @@ import {
 	projectilesStore,
 	xpGemsStore,
 	bombsStore,
-	healthPacksStore
+	healthPacksStore,
+	portalsStore
 } from '$lib/stores'
 import { collision } from './utils'
 import { keys } from './controller'
@@ -23,6 +25,8 @@ import {
 	playerHp,
 	maxHp,
 	wave,
+	level,
+	startingWeapon,
 	addXp,
 	gameOver,
 	stopRun,
@@ -37,17 +41,17 @@ import {
 	waveEnemyCap,
 	waveEnemySpeed,
 	waveEnemyHealth,
-	waveContactDamage
+	waveContactDamage,
+	type WaveDef
 } from './waves'
 import { drawHud, drawWaveBanner, drawIntermissionPrompt, WAVE_BANNER_MS } from './hud'
 import { nearestEnemy } from './los'
 import {
 	rollChoices,
-	BASE_FIRE_STEPS,
+	weaponChoices,
 	BASE_INVULN,
 	BASE_MAGNET,
 	BASE_JUMP,
-	BASE_ATTACK_RANGE,
 	BASE_SHIELD_MAX,
 	BASE_SHIELD_REGEN,
 	BASE_REROLLS,
@@ -65,6 +69,9 @@ const SHIELD_FLASH_STEPS = 12 // steps the shield break/absorb ring is drawn
 const SPAWN_DWELL_MS = 1500 // how long the player must hold the spawn pedestal to launch the next wave
 const SPAWN_FLASH_MS = 260 // spawn burst when the hold completes and the wave triggers
 const INTERMISSION_MAGNET_MUL = 10 // pickup-radius boost during the rest so leftover gems get swept in
+const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns clustered and legible
+const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
+const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -96,16 +103,11 @@ export class GameWorld {
 	// collidable) as the old set fades out over the spawn dwell; promoted on hold-complete.
 	private pendingPlatforms: Platform[] = []
 
-	// Auto-attack: the player fires at the nearest enemy on this cadence while a run
-	// is active. No mouse — the pointer stays free to read/scroll the CV.
-	private playerFireCooldown = 0
-
 	// Run tunables, bumped by the level-up upgrades (upgrades.ts mutates these) and
-	// restored to their baseline by resetUpgrades() on a fresh run.
-	fireSteps = BASE_FIRE_STEPS
+	// restored to their baseline by resetUpgrades() on a fresh run. Weapon-side tunables
+	// (cadence, range, bolt count…) moved onto the per-weapon Weapon instances.
 	invulnSteps = BASE_INVULN
 	magnetRadius = BASE_MAGNET
-	attackRange = BASE_ATTACK_RANGE // how close an enemy must be before the player opens fire (Optique raises it)
 	xpMul = 1 // XP banked per gem
 	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
 	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
@@ -125,7 +127,11 @@ export class GameWorld {
 	levelUpOpen = $state(false)
 	choices = $state<Upgrade[]>([])
 	rerolls = $state(0)
+	// True while the current pick is the weapon-milestone card (choose a 2nd weapon) rather
+	// than a normal upgrade — the UI swaps its heading and hides the reroll for it.
+	isWeaponMilestone = $state(false)
 	private pendingLevelUps = 0
+	private weaponMilestoneDone = false // the 2nd-weapon card only ever appears once per run
 
 	// --- Wave / run timing ---
 	private spawnTimer = 0
@@ -161,6 +167,7 @@ export class GameWorld {
 		xpGemsStore.clear()
 		bombsStore.clear()
 		healthPacksStore.clear()
+		portalsStore.clear()
 	}
 
 	// --- Input ----------------------------------------------------------------
@@ -276,6 +283,7 @@ export class GameWorld {
 		enemiesStore.clear()
 		projectilesStore.clear()
 		bombsStore.clear()
+		portalsStore.clear() // any mid-telegraph rifts vanish with the cleared field
 		this.pendingPlatforms = this.buildLayout()
 		for (const p of this.pendingPlatforms) p.renderAlpha = 0
 	}
@@ -296,8 +304,9 @@ export class GameWorld {
 		const def = waveDef(get(wave))
 		this.waveBanner = WAVE_BANNER_MS
 		this.waveBannerLabel = def.label
-		// A themed wave can open with an elite (slow bullet-sponge) spawned as it begins.
-		if (def.eliteAtStart) this.spawnEnemy(def.eliteAtStart)
+		// A themed wave can open with an elite (slow bullet-sponge): a dedicated rift tears
+		// open and strides it out, so even the miniboss beat arrives through a portal.
+		if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
 	}
 
 	// Advance the rest phase: accumulate/reset the pedestal hold, crossfade the old arena
@@ -395,10 +404,8 @@ export class GameWorld {
 		// them from here. Invuln, magnet, regen and jump aren't class-specific in v1, so
 		// they keep their global baselines.
 		const c = this.player.cfg
-		this.fireSteps = c.fireSteps
 		this.invulnSteps = BASE_INVULN
 		this.magnetRadius = BASE_MAGNET
-		this.attackRange = BASE_ATTACK_RANGE
 		this.xpMul = 1
 		this.regenPerStep = 0
 		this.regenAccum = 0
@@ -408,11 +415,10 @@ export class GameWorld {
 		this.shieldRegenTimer = 0
 		this.shieldFlash = 0
 		this.player.speed = c.speed
-		this.player.projectileCount = c.projectileCount
-		this.player.damage = c.damage
-		this.player.spread = c.spread
-		this.player.projectileSpeed = c.projectileSpeed
 		this.player.jumpStrength = BASE_JUMP
+		// Weapon combat stats (cadence, count, damage, spread, speed, range) are per-weapon now
+		// and reset on their own instances; the level-up weapon upgrades bump these copies.
+		for (const weapon of this.player.weapons) weapon.reset()
 	}
 
 	// Passive regeneration (Regen upgrade): heal fractional HP each step, carrying the
@@ -431,10 +437,30 @@ export class GameWorld {
 		}
 	}
 
-	// Spend a reroll to redraw the current choices (no-op when none are left).
+	// Spend a reroll to redraw the current choices (no-op when none are left, or on the
+	// weapon-milestone card — the 2nd-weapon offer isn't rerollable).
 	reroll() {
-		if (!this.levelUpOpen || this.rerolls <= 0) return
+		if (!this.levelUpOpen || this.isWeaponMilestone || this.rerolls <= 0) return
 		this.rerolls--
+		this.choices = rollChoices(this)
+	}
+
+	// Build the next pick: the weapon-milestone card (choose a 2nd weapon) once the player
+	// reaches WEAPON_MILESTONE_LEVEL still solo, otherwise the normal weighted upgrade roll.
+	private openPick() {
+		if (
+			!this.weaponMilestoneDone &&
+			this.player.weapons.length < 2 &&
+			get(level) >= WEAPON_MILESTONE_LEVEL
+		) {
+			const offers = weaponChoices(this)
+			if (offers.length) {
+				this.choices = offers
+				this.isWeaponMilestone = true
+				return
+			}
+		}
+		this.isWeaponMilestone = false
 		this.choices = rollChoices(this)
 	}
 
@@ -442,7 +468,7 @@ export class GameWorld {
 	private queueLevelUps(n: number) {
 		this.pendingLevelUps += n
 		if (!this.levelUpOpen) {
-			this.choices = rollChoices(this)
+			this.openPick()
 			this.levelUpOpen = true
 		}
 	}
@@ -451,9 +477,16 @@ export class GameWorld {
 	chooseUpgrade(u: Upgrade) {
 		if (!this.levelUpOpen || !u) return
 		u.apply(this)
+		if (this.isWeaponMilestone) this.weaponMilestoneDone = true // 2nd weapon claimed
+		// A level-up fully heals (Brotato-style reward for surviving the climb). Applied
+		// AFTER the pick so a +max-HP choice (Vitality) tops up to the new, higher cap.
+		playerHp.set(get(maxHp))
 		this.pendingLevelUps--
-		if (this.pendingLevelUps > 0) this.choices = rollChoices(this)
-		else this.levelUpOpen = false
+		if (this.pendingLevelUps > 0) this.openPick()
+		else {
+			this.levelUpOpen = false
+			this.isWeaponMilestone = false
+		}
 	}
 
 	// --- Spawn director -------------------------------------------------------
@@ -513,77 +546,204 @@ export class GameWorld {
 		)
 	}
 
-	// Decide what to spawn on a tick: keep the field topped up to the wave cap while
-	// maintaining every pressure floor. If the field is capped and a camping player
-	// has clogged it with unreachable ground units, retire the one stuck furthest
-	// below the player and swap in the missing pressure type — no spot stays safe.
-	private spawnFromBudget() {
-		const def = waveDef(get(wave))
-		const list = enemiesStore.list
-		const count = (k: EnemyKind) => list.filter((e) => e.kind === k).length
-		// Among this wave's pressure floors below their target, pick one weighted by how
-		// far below it sits. Weighting by the deficit — rather than always taking the
-		// first unmet floor — stops a low-priority vector (the bomber) from starving
-		// forever: while the player keeps culling the flyers and shooters ahead of it, a
-		// strict-order version never climbs to the bomber rung. A totally-absent bomber
-		// (deficit 2) now outweighs a flyer that's just one short (deficit 1), so every
-		// vector the theme calls for eventually shows up.
+	// --- Portal-based spawning ------------------------------------------------
+	// Enemies no longer trickle in one-by-one from the edges. On each spawn tick the director
+	// assembles a small BATCH (up to MAX_HORDE) using the same floors/deficit/ground brain as
+	// before, then tears open a rift to carry it: air kinds get an air rift, ground kinds a
+	// ground rift, turrets keep perching directly. The rift telegraphs, then pours the pack
+	// out — clustered and readable instead of scattered.
+	private countKind(k: EnemyKind) {
+		return enemiesStore.list.filter((e) => e.kind === k).length
+	}
+
+	// Enemies still queued inside open rifts (not yet materialised). Counted toward the field
+	// so the director doesn't overfill while a telegraph is still winding up.
+	private queuedCount(k?: EnemyKind) {
+		let n = 0
+		for (const p of portalsStore.list) n += k ? p.queue.filter((q) => q === k).length : p.queue.length
+		return n
+	}
+
+	// Pick the single best kind to add given the live field, the rifts' pending queues, and a
+	// `projected` tally of what's already in the batch being assembled. Unmet pressure floors
+	// win first (weighted by how far below target they sit, so a totally-absent bomber isn't
+	// starved by a flyer that's only one short); otherwise draw fodder from the theme's ground
+	// pool (repeats weight the odds — ['biker','biker','charger'] is 2:1 bikers).
+	private pickSpawnKind(def: WaveDef, projected: Map<EnemyKind, number>): EnemyKind | null {
+		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k) + (projected.get(k) ?? 0)
 		const deficits = Object.entries(def.floors ?? {})
-			.map(([kind, target]) => ({
-				kind: kind as EnemyKind,
-				need: target - count(kind as EnemyKind)
-			}))
+			.map(([kind, target]) => ({ kind: kind as EnemyKind, need: target - total(kind as EnemyKind) }))
 			.filter((p) => p.need > 0)
-		let missing: EnemyKind | null = null
 		if (deficits.length) {
 			let r = Math.random() * deficits.reduce((s, p) => s + p.need, 0)
-			missing = deficits[deficits.length - 1].kind // guard against FP undershoot
+			let chosen = deficits[deficits.length - 1].kind // guard against FP undershoot
 			for (const p of deficits) {
 				r -= p.need
 				if (r < 0) {
-					missing = p.kind
+					chosen = p.kind
 					break
 				}
 			}
+			return chosen
 		}
-		// Fodder to fill the rest of the cap: drawn from the theme's ground pool (repeats
-		// weight the odds — e.g. ['biker','biker','charger'] is 2:1 bikers).
-		const groundKind: EnemyKind | null = def.ground.length
-			? def.ground[Math.floor(Math.random() * def.ground.length)]
-			: null
+		return def.ground.length ? def.ground[Math.floor(Math.random() * def.ground.length)] : null
+	}
 
-		if (list.length < def.cap) {
-			const pick = missing ?? groundKind
-			if (pick) this.spawnEnemy(pick)
-		} else if (missing) {
-			// Field is capped and a pressure type is missing: retire the cullable ground
-			// unit stuck furthest below the player to free a slot for the missing vector.
-			let stuck: Enemy | null = null
-			let worst = -Infinity
-			for (const e of list) {
-				if (!ENEMY_TYPES[e.kind].cullable) continue
-				const below = e.pos.y - this.player.pos.y
-				if (below > worst) {
-					worst = below
-					stuck = e
-				}
+	// Keep the field topped up to the wave cap. While a rift can still be opened and the field
+	// (live + queued) is under cap, assemble a batch and open rift(s) for it. If the field is
+	// capped but a pressure floor is unmet, retire the ground unit stuck furthest below a
+	// camping player and open a small rift for the missing vector — no spot stays safe.
+	private spawnFromBudget() {
+		const def = waveDef(get(wave))
+		if (portalsStore.list.length >= MAX_ACTIVE_PORTALS) return // let the open rifts finish first
+		const effective = enemiesStore.list.length + this.queuedCount()
+		if (effective >= def.cap) {
+			this.cullForMissingFloor(def)
+			return
+		}
+		const room = Math.min(def.cap - effective, MAX_HORDE)
+		const projected = new Map<EnemyKind, number>()
+		const batch: EnemyKind[] = []
+		for (let i = 0; i < room; i++) {
+			const kind = this.pickSpawnKind(def, projected)
+			if (!kind) break
+			batch.push(kind)
+			projected.set(kind, (projected.get(kind) ?? 0) + 1)
+		}
+		if (batch.length) this.openPortalsForBatch(batch)
+	}
+
+	// Field is capped and a pressure floor is still unmet: cull the stuck camper and rift in
+	// the missing vector.
+	private cullForMissingFloor(def: WaveDef) {
+		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k)
+		const missing = Object.entries(def.floors ?? {})
+			.map(([kind, target]) => ({ kind: kind as EnemyKind, need: target - total(kind as EnemyKind) }))
+			.filter((p) => p.need > 0)
+		if (!missing.length) return
+		let stuck: Enemy | null = null
+		let worst = -Infinity
+		for (const e of enemiesStore.list) {
+			if (!ENEMY_TYPES[e.kind].cullable) continue
+			const below = e.pos.y - this.player.pos.y
+			if (below > worst) {
+				worst = below
+				stuck = e
 			}
-			if (stuck) {
-				enemiesStore.delete(stuck)
-				this.spawnEnemy(missing)
-			}
+		}
+		if (stuck) {
+			enemiesStore.delete(stuck)
+			this.openPortalsForBatch([missing[0].kind])
+		}
+	}
+
+	// Split a batch by placement and open the rift(s) to carry it. Turrets don't ride portals —
+	// they perch directly (a single, readable unit, not part of the dispersal problem).
+	private openPortalsForBatch(batch: EnemyKind[]) {
+		const air: EnemyKind[] = []
+		const ground: EnemyKind[] = []
+		for (const k of batch) {
+			if (k === 'turret') this.spawnEnemy('turret')
+			else if (ENEMY_TYPES[k].spawnY === 'air') air.push(k)
+			else ground.push(k)
+		}
+		if (air.length) this.openPortal('air', air)
+		if (ground.length) this.openPortal('ground', ground)
+	}
+
+	// Choose where a rift tears open. Air rifts hover in the altitude band on an alternating
+	// side; ground rifts sit at floor level at a screen edge (preferred), or sometimes ride a
+	// visible ledge (edge perches first) so a pack can drop in from a platform.
+	private pickPortalSite(placement: PortalPlacement): { pos: { x: number; y: number }; anchor: Platform | null } {
+		const W = this.canvas.width
+		const H = this.canvas.height
+		const fromLeft = this.spawnSide++ % 2 === 0
+		if (placement === 'air') {
+			return { pos: { x: fromLeft ? W * 0.14 : W * 0.86, y: H * 0.3 }, anchor: null }
+		}
+		const ledges = this.proceduralPlatforms.filter((p) => p.visible)
+		if (ledges.length && Math.random() < 0.35) {
+			const perches = ledges.filter((p) => p.edge)
+			const pool = perches.length ? perches : ledges
+			const ledge = pool[Math.floor(Math.random() * pool.length)]
+			return { pos: { x: ledge.left + ledge.width / 2, y: ledge.top - 4 }, anchor: ledge }
+		}
+		return { pos: { x: fromLeft ? 44 : W - 44, y: H - 30 }, anchor: null }
+	}
+
+	private openPortal(placement: PortalPlacement, kinds: EnemyKind[]) {
+		const { pos, anchor } = this.pickPortalSite(placement)
+		// Ground rifts rise out of their surface (a ledge top, else the canvas floor); air rifts
+		// float free (null). Keeps the rift from sinking under the ground or a passerelle.
+		const baseY = placement === 'air' ? null : anchor ? anchor.top : this.canvas.height
+		portalsStore.add(new Portal(pos, placement, kinds, anchor, baseY))
+	}
+
+	// Build a wave-scaled Enemy of `kind` at (x, y). Shared by the rift emitter and the direct
+	// turret spawn so toughness/speed ramps stay in one place.
+	private makeEnemy(kind: EnemyKind, x: number, y: number): Enemy {
+		const w = get(wave)
+		const t = ENEMY_TYPES[kind]
+		const speed = t.waveSpeedMul != null ? waveEnemySpeed(w) * t.waveSpeedMul : t.speed
+		return new Enemy(
+			{ x, y },
+			{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
+		)
+	}
+
+	// A rift released a unit: drop it into the world at the rift's mouth (centred for air,
+	// on the ledge for a platform rift, at floor level otherwise) and let it behave normally.
+	private materializeFromPortal(portal: Portal, kind: EnemyKind) {
+		const t = ENEMY_TYPES[kind]
+		let x: number
+		let y: number
+		if (portal.placement === 'air') {
+			x = portal.pos.x - t.width / 2
+			y = portal.pos.y - t.height / 2
+		} else if (portal.anchor) {
+			const a = portal.anchor
+			x = Math.min(Math.max(a.left, portal.pos.x - t.width / 2), a.left + a.width - t.width)
+			y = a.top - t.height
+		} else {
+			x = portal.pos.x - t.width / 2
+			y = this.canvas.height - t.height
+		}
+		enemiesStore.add(this.makeEnemy(kind, x, y))
+	}
+
+	// Advance every open rift, materialise whatever it emits this frame, and retire the ones
+	// that have finished collapsing.
+	private updatePortals(frameTime: number) {
+		for (const portal of portalsStore.list.slice()) {
+			for (const kind of portal.update(frameTime)) this.materializeFromPortal(portal, kind)
+			if (portal.done) portalsStore.delete(portal)
 		}
 	}
 
 	// --- Combat resolution ----------------------------------------------------
-	// Dispatch the player's attack on the active class's style, on the fire cadence while
-	// a target is in range. Only 'ranged' (the Punk) is wired today; the 'melee'/'deploy'
-	// cases re-slot here when their classes come back (see characters.ts / ROADMAP.md).
-	private playerAttack() {
-		switch (this.player.cfg.attackStyle) {
-			case 'ranged':
-				this.player.shoot()
-				break
+	// Drive the player's weapons each step: every weapon aims from its own muzzle at the
+	// nearest enemy IT can reach (so a left and a right weapon cover different threats),
+	// then fires on its own cadence. When not playing (intermission) weapons still aim
+	// straight ahead but hold fire. Only 'ranged' (the Punk) is wired; 'melee'/'deploy'
+	// re-slot here when their classes come back (see characters.ts / ROADMAP.md).
+	private playerCombat(playing: boolean) {
+		if (this.player.cfg.attackStyle !== 'ranged') return
+		for (const weapon of this.player.weapons) {
+			const muzzle = weapon.muzzle(this.player)
+			// A zero-size aim source centres nearestEnemy exactly on the muzzle point.
+			const target = playing
+				? nearestEnemy({ pos: muzzle, width: 0, height: 0 }, this.platforms, weapon.attackRange)
+				: null
+			weapon.aimAt(target, muzzle, this.player.direction)
+			if (!playing) continue
+			if (weapon.cooldown > 0) {
+				weapon.cooldown--
+				continue
+			}
+			if (target) {
+				weapon.shoot(muzzle)
+				weapon.cooldown = weapon.fireSteps
+			}
 		}
 	}
 
@@ -831,13 +991,17 @@ export class GameWorld {
 			xpGemsStore.clear()
 			bombsStore.clear()
 			healthPacksStore.clear()
+			portalsStore.clear()
 			// (Re)configure the Player from the character registry, then reset its base stats.
 			// One class ships today (Punk); the registry stays the seam for re-adding classes.
 			this.player.applyCharacter(CHARACTERS.punk)
+			this.player.equip([get(startingWeapon)]) // the weapon chosen in the launch picker
 			this.resetUpgrades()
 			this.rerolls = BASE_REROLLS
 			this.levelUpOpen = false
 			this.pendingLevelUps = 0
+			this.isWeaponMilestone = false
+			this.weaponMilestoneDone = false
 			this.spawnTimer = 0
 			this.invuln = 0
 			this.waveTimer = 0
@@ -857,6 +1021,7 @@ export class GameWorld {
 		if (!playing && this.levelUpOpen) {
 			this.levelUpOpen = false
 			this.pendingLevelUps = 0
+			this.isWeaponMilestone = false
 		}
 		// Sim freeze (field preserved, not cleared): either a level-up pick or the pause menu.
 		const paused = this.levelUpOpen || get(pausedStore)
@@ -870,6 +1035,8 @@ export class GameWorld {
 				// arena layout meanwhile).
 				this.updateIntermission(frameTime)
 			} else {
+				// Advance open rifts every frame (they emit their hordes on their own timers).
+				this.updatePortals(frameTime)
 				this.waveTimer += frameTime
 				if (this.waveTimer >= waveDuration(get(wave))) {
 					// Combat over: clear the field, spawn a new arena, and wait for the
@@ -889,6 +1056,7 @@ export class GameWorld {
 			if (xpGemsStore.list.length) xpGemsStore.clear()
 			if (bombsStore.list.length) bombsStore.clear()
 			if (healthPacksStore.list.length) healthPacksStore.clear()
+			if (portalsStore.list.length) portalsStore.clear()
 			this.invuln = 0
 			this.waveBanner = 0
 			// Drop the arena ledges so the idle/home screen shows none (they're re-rolled
@@ -936,17 +1104,9 @@ export class GameWorld {
 						.slice()
 						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
 				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
-				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
-				const target = playing ? nearestEnemy(this.player, this.platforms, this.attackRange) : null
-				this.player.aimAt(target)
+				// Auto-attack: each weapon aims from its own muzzle and fires on its own cadence.
+				this.playerCombat(playing)
 				if (playing) {
-					if (target) {
-						if (this.playerFireCooldown > 0) this.playerFireCooldown--
-						else {
-							this.playerAttack()
-							this.playerFireCooldown = this.fireSteps
-						}
-					}
 					this.resolveHits()
 					this.resolveGemPickups()
 					this.resolveHealthPickups()
@@ -985,6 +1145,8 @@ export class GameWorld {
 		// Spawn pedestal call-to-action glow during the rest, and the launch burst after.
 		if (playing && this.intermission) this.drawSpawnGlow()
 		if (playing && this.spawnFlash > 0) this.drawSpawnFlash()
+		// Enemy rifts, behind the gems/enemies so hordes read as emerging in front of them.
+		if (playing) portalsStore.list.forEach((portal) => portal.draw(this.ctx))
 		xpGemsStore.list.forEach((gem) => gem.draw(this.ctx, alpha))
 		healthPacksStore.list.forEach((pack) => pack.draw(this.ctx, alpha))
 		enemiesStore.list.forEach((enemy) => enemy.draw(this.ctx, animDelta, alpha))

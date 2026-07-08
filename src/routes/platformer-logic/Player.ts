@@ -1,9 +1,10 @@
-import { effectsStore, projectilesStore } from '$lib/stores'
+import { effectsStore } from '$lib/stores'
 import { Effect } from './Effect'
-import { Projectile } from './Projectile'
 import type { Platform } from './Platform'
 import type { KeyState } from './controller'
 import { CHARACTERS, type CharacterType } from './characters'
+import { Weapon } from './Weapon'
+import type { WeaponKind } from './weaponTypes'
 import { collision, getSprite, hasSprite } from './utils'
 
 const GRAVITY = 0.33
@@ -23,11 +24,10 @@ export class Player {
 	frame = 1
 	ticksCount = 0
 	direction = 'right'
-	angle = 0
-	projectileCount = 1 // bolts per shot (Multi-Shot upgrade)
-	damage = 1 // damage per bolt (Power Shot upgrade)
-	spread = 0.07 // base weapon inaccuracy: ± radians of random deviation per bolt (Focus lowers it)
-	projectileSpeed = 8 // bolt travel speed (Velocity upgrade raises it); reset from cfg each run
+	// Equipped weapons (up to two). Each owns its own aim, cadence and upgradeable stats and
+	// fires at the nearest enemy to its own muzzle — GameWorld drives them each step. Built
+	// from the character's `weapons` list in applyCharacter().
+	weapons: Weapon[] = []
 	jumpStrength = 8 // upward jump velocity (Spring upgrade raises it); reset each run
 	isFalling = false
 	jumpAvailable = 2
@@ -56,6 +56,24 @@ export class Player {
 		this.ticksPerFrame = sprite.speed || 5
 		this.maxFrame = sprite.frames ?? 0
 		this.frame = 1
+		this.equip(cfg.weapons)
+	}
+
+	// (Re)build the equipped weapons from a kind list (fresh instances at base stats). One
+	// weapon rides centred; a pair splits left/right. Called on run start.
+	equip(kinds: readonly WeaponKind[]) {
+		this.weapons = kinds.map(
+			(k, i) => new Weapon(k, kinds.length < 2 ? 'center' : i === 0 ? 'left' : 'right')
+		)
+	}
+
+	// Add a second weapon mid-run (the level milestone reward) WITHOUT touching the first —
+	// its earned upgrades are preserved. The lone centred weapon shifts left; the newcomer
+	// takes the right. No-op once two are held.
+	addWeapon(kind: WeaponKind) {
+		if (this.weapons.length >= 2) return
+		if (this.weapons.length === 1) this.weapons[0].side = 'left'
+		this.weapons.push(new Weapon(kind, this.weapons.length === 0 ? 'center' : 'right'))
 	}
 
 	update(canvas: HTMLCanvasElement, keys: KeyState, platforms: Platform[], deltaTime: number) {
@@ -76,29 +94,16 @@ export class Player {
 		this.#handleKeys(keys)
 	}
 
-	// Auto-aim: point the weapon at a target's centre, or straight ahead in the
-	// facing direction when there's none. Replaces mouse aiming.
-	aimAt(target: { pos: { x: number; y: number }; width: number; height: number } | null) {
-		if (!target) {
-			this.angle = this.direction === 'left' ? Math.PI : 0
-			return
-		}
-		this.angle = Math.atan2(
-			target.pos.y + target.height / 2 - (this.pos.y + this.height / 2),
-			target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
-		)
-	}
-
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
 		// Render at the interpolated position between the last two physics steps
 		// so motion stays smooth at the display's refresh rate.
 		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
-		// Only a ranged class holds the gun (the attackStyle seam — kept for when melee
-		// classes return; the Punk is always ranged today).
+		// Each weapon draws its gun + hand behind the body (so the character sits in front).
+		// Only a ranged class holds guns (the attackStyle seam — kept for when melee classes
+		// return; the Punk is always ranged today).
 		if (this.cfg.attackStyle === 'ranged') {
-			this.#drawHand(ctx, x, y)
-			this.#drawWeapon(ctx, x, y)
+			for (const weapon of this.weapons) weapon.draw(ctx, x, y, this)
 		}
 		this.#drawCharacter(ctx, deltaTime, x, y)
 	}
@@ -133,75 +138,6 @@ export class Player {
 				this.height * 2
 			)
 			ctx.restore()
-		}
-	}
-
-	#drawWeapon(ctx: CanvasRenderingContext2D, x: number, y: number) {
-		ctx.save()
-		ctx.translate(x + this.width / 2, y + this.height / 2)
-		// if the player is facing left, flip the weapon
-		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
-		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
-
-		ctx.drawImage(
-			getSprite('weapon', 'gun_1').img,
-			0,
-			0,
-			this.width,
-			this.height,
-			14,
-			-4,
-			this.width * 2,
-			this.height * 2
-		)
-		ctx.restore()
-	}
-
-	#drawHand(ctx: CanvasRenderingContext2D, x: number, y: number) {
-		const handKey = `${this.character}_3`
-		if (!hasSprite('hand', handKey)) return // class without a hand sprite draws none
-		ctx.save()
-		ctx.translate(x + this.width / 2, y + this.height / 2)
-		// if the player is facing left, flip the hand
-		Math.cos(this.angle) < 0 ? ctx.scale(1, -1) : ctx.scale(1, 1)
-		Math.cos(this.angle) < 0 ? ctx.rotate(-this.angle) : ctx.rotate(this.angle)
-
-		ctx.drawImage(
-			getSprite('hand', handKey).img,
-			0,
-			0,
-			this.width,
-			this.height,
-			-28,
-			-28,
-			this.width * 2,
-			this.height * 2
-		)
-		ctx.restore()
-	}
-
-	shoot() {
-		const weaponLength = 60 // distance from the character's centre to the muzzle
-		const cx = this.pos.x + this.width / 2
-		const cy = this.pos.y + this.height / 2
-		const n = this.projectileCount
-		// Bolts fan out in a cone around the aim, and each one also deviates
-		// randomly — so accuracy is a real cost. Stacking Multi-Shot widens the
-		// random jitter, turning the weapon into a short-range spray instead of a
-		// wall of pinpoint lasers (which is what made the old version trivial).
-		const coneStep = 0.15 // radians between adjacent bolts in the fan
-		const jitter = this.spread + 0.02 * (n - 1) // ± random deviation, grows with bolt count
-		const base = this.angle - (coneStep * (n - 1)) / 2
-		for (let i = 0; i < n; i++) {
-			const a = base + coneStep * i + (Math.random() - 0.5) * 2 * jitter
-			projectilesStore.add(
-				new Projectile(
-					{ x: cx + Math.cos(a) * weaponLength, y: cy + Math.sin(a) * weaponLength },
-					a,
-					'blue',
-					{ damage: this.damage, speed: this.projectileSpeed }
-				)
-			)
 		}
 	}
 

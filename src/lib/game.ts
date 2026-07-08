@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store'
 import { CHARACTERS } from '../routes/platformer-logic/characters'
+import type { WeaponKind } from '../routes/platformer-logic/weaponTypes'
 
 export type GameStatus = 'idle' | 'playing' | 'over'
 
@@ -58,6 +59,29 @@ export function addXp(value: number): number {
 	}
 	levelXp.set(cur)
 	return ups
+}
+
+// Starting-weapon selection. Every run begins by choosing which weapon to carry (the
+// second is earned mid-run at the level milestone). The launch overlay (GameWrapper) reads
+// `weaponSelectOpen`; GameWorld equips `startingWeapon` on the rising edge of the run.
+export const startingWeapon = writable<WeaponKind>('pistol')
+export const weaponSelectOpen = writable(false)
+
+/** Open the starting-weapon picker (from the Start button / Restart). No run yet. */
+export function requestLaunch() {
+	weaponSelectOpen.set(true)
+}
+
+/** Dismiss the picker without starting (e.g. clicking away is not wired, but Quit is). */
+export function cancelLaunch() {
+	weaponSelectOpen.set(false)
+}
+
+/** Commit the chosen starter and begin the run. */
+export function launchWith(kind: WeaponKind) {
+	startingWeapon.set(kind)
+	weaponSelectOpen.set(false)
+	startRun()
 }
 
 /** Begin a fresh run: reset score, seed HP from the base character, then play. */

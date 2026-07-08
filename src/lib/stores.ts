@@ -4,6 +4,7 @@ import type { Enemy } from '../routes/platformer-logic/Enemy'
 import type { XpGem } from '../routes/platformer-logic/XpGem'
 import type { Bomb } from '../routes/platformer-logic/Bomb'
 import type { HealthPack } from '../routes/platformer-logic/HealthPack'
+import type { Portal } from '../routes/platformer-logic/Portal'
 
 // Entity collections are plain-array pools, NOT Svelte stores. They're mutated
 // ~60×/second by the game loop and drawn imperatively to the canvas, so nothing in
@@ -42,3 +43,4 @@ export const enemiesStore = new Pool<Enemy>()
 export const xpGemsStore = new Pool<XpGem>()
 export const bombsStore = new Pool<Bomb>()
 export const healthPacksStore = new Pool<HealthPack>()
+export const portalsStore = new Pool<Portal>()

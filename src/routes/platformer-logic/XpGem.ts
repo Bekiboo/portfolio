@@ -1,5 +1,4 @@
 import { collision } from './utils'
-import { xpGemsStore } from '$lib/stores'
 import type { Platform } from './Platform'
 import type { Player } from './Player'
 
@@ -7,13 +6,13 @@ const GRAVITY = 0.33 // matches the world gravity used by Player/Enemy
 const MAGNET_RADIUS = 78 // gems within this distance of the player drift toward them
 const MAGNET_PULL = 0.9 // per-step acceleration toward the player inside the magnet
 const FRICTION = 0.86 // horizontal damping once a gem is resting on the ground
-const LIFETIME = 600 // physics steps a gem lives (~10s) before it fades out
-const BLINK_STEPS = 150 // it blinks over its final ~2.5s to warn it's about to vanish
 
 // A dropped experience shard. Bursts out of a dead enemy, tumbles to the floor
-// under gravity, then rests there until the player walks over it (a short-range
-// magnet eases the final pickup). Because it falls, the player can't farm purely
-// from a safe perch — they have to drop down and sweep the ground to bank XP.
+// under gravity, then rests there indefinitely until the player walks over it (a
+// short-range magnet eases the final pickup). Gems never despawn — the run's XP is
+// always bankable, so a mop-up sweep between waves is guaranteed value; the tension
+// is spatial (drop down and sweep), not a fade-out timer. Because it falls, the
+// player still can't farm purely from a safe perch.
 export class XpGem {
 	pos: { x: number; y: number }
 	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
@@ -57,11 +56,7 @@ export class XpGem {
 	) {
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
-		this.age++
-		if (this.age > LIFETIME) {
-			xpGemsStore.delete(this)
-			return
-		}
+		this.age++ // still drives the slow shimmer (no lifetime cap — gems persist)
 
 		// Short-range magnet: once the player is near, slurp the gem in (overriding
 		// gravity) so the final pickup feels crisp. Out of range it just falls.
@@ -121,8 +116,6 @@ export class XpGem {
 	}
 
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
-		// Blink out over the final stretch so its disappearance isn't a surprise.
-		if (this.age > LIFETIME - BLINK_STEPS && Math.floor(this.age / 8) % 2 === 0) return
 		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha + this.width / 2
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha + this.height / 2
 		const r = this.width / 2

@@ -34,6 +34,18 @@ Idées de polish / feel à explorer (à trier ensemble) :
   fond (renderAlpha 1→0) et le nouveau apparaît (0→1)** ; à la fin, **flash** (`SPAWN_FLASH_MS`)
   et la vague suivante démarre sur les nouvelles ledges (`buildLayout`, `Platform.visible`).
   Consts tunables : `SPAWN_DWELL_MS`, `SPAWN_FLASH_MS`, nombre/placement des ledges.
+- [x] **Portails d'ennemis** (`Portal.ts`) : au lieu d'éparpiller les ennemis un par un
+  depuis les bords (illisible, jamais jouissif à nettoyer), le spawn director **ouvre des
+  rifts porteurs d'un batch**. Un portail **télégraphe 2s** (`PORTAL_OPEN_MS`, aucun ennemi),
+  puis **déverse sa horde** un ennemi toutes les 200ms (`PORTAL_EMIT_MS`), puis se referme
+  (`PORTAL_CLOSE_MS`). Placement : rift **aérien** (bande d'altitude, côté alterné) pour les
+  volants, rift **au sol** (bord d'écran de préférence, parfois sur une ledge/perche) pour les
+  marcheurs. Les **tourelles** ne passent pas par un portail (elles perchent direct — unité
+  unique, pas un problème de dispersion). Le cerveau existant (floors/deficit/cull) est gardé
+  et sert à **assembler le batch** (`pickSpawnKind` → `MAX_HORDE`) ; les ennemis en file dans
+  un rift comptent dans le cap (`queuedCount`) pour ne pas surremplir pendant le télégraphe.
+  Visuel : rift fuchsia/violet (hostile — distinct du glow cyan ami du pédestal). Consts
+  tunables : `PORTAL_OPEN_MS`, `PORTAL_EMIT_MS`, `MAX_ACTIVE_PORTALS` (2), `MAX_HORDE` (6).
 - [ ] Feedback de tir (recul, muzzle flash, screenshake léger).
 - [ ] Feedback d'impact / de mort plus lisible.
 - [ ] Feel du déplacement (accel/decel, coyote time, saut).
@@ -42,6 +54,53 @@ Idées de polish / feel à explorer (à trier ensemble) :
 
 > Analyse à part : extraire la logique en **jeu navigateur autonome** (plateformes réelles,
 > caméra, scrolling, scalabilité JS) → voir [`EXTRACTION.md`](./EXTRACTION.md).
+
+## Cap suivant : refonte gameplay & économie (façon Brotato / DRG Survivor)
+
+Sortir du modèle « Vampire Survivors » (une seule monnaie XP, choix gratuit forcé) vers une
+**double couche** : XP = progression *forcée* générique ; crédits = pouvoir d'achat *choisi*,
+spécifique. Cinq systèmes, à construire dans cet ordre. **Décisions prises** : (1er chantier)
+**portails** ✅ ; armes = **archétypes mécaniquement distincts** (pas juste des skins) ;
+2e arme + pouvoir S = **récompense de palier de niveau** (carte spéciale, pas via boutique).
+
+1. **[x] Portails** (fait — cf. section polish ci-dessus). Indépendant des 4 autres.
+2. **[x] Refonte XP** : les gemmes **ne despawnent plus** (`XpGem` : plus de `LIFETIME`/blink —
+   l'XP du run est toujours banquable, tension spatiale et non temporelle) ; **level-up = full PV**
+   (`chooseUpgrade`, appliqué *après* le pick pour que Vitality remonte au nouveau cap). Split
+   boutique **préparé** : chaque upgrade porte un `scope` (`generic` | `weapon` | `power`) et
+   `rollChoices` filtre via `WEAPON_UPGRADES_IN_XP` — flag à passer à `false` au chantier 5 pour un
+   pool XP 100% générique. Pour l'instant les upgrades d'arme (Velocity/Optique/Multi/Power/Focus)
+   **restent tirables** (sinon plus aucune progression offensive avant la boutique).
+3. **[x] Deux armes** — fait :
+   - `WEAPON_TYPES` (`weaponTypes.ts`, jumeau d'`ENEMY_TYPES`) : 4 archétypes distincts —
+     `pistol` (équilibré), `rifle` (lent/longue portée/gros dégâts), `shotgun` (5 plombs cône
+     large courte portée), `smg` (cadence folle spray court). Différenciés par les stats
+     (cadence/count/spread/portée/vitesse), pas juste le skin.
+   - Classe `Weapon` : muzzle + visée + cadence + stats upgradables **par arme** ; vise l'ennemi
+     le plus proche **de son muzzle** via `nearestEnemy({pos:muzzle,width:0,height:0}, …)` (0 modif
+     `los.ts`). `Player.weapons: Weapon[]`, `Player.equip(kinds)` (1 = centrée, 2 = gauche/droite).
+     `GameWorld.playerCombat` pilote chaque arme (vise + tire sur sa propre cadence).
+   - Perso = **châssis** : `CharacterType` perd les stats de combat, gagne `weapons: WeaponKind[]`.
+   - Upgrades d'arme retargées sur **toutes les armes tenues** (`forEach`) — deviendront per-arme
+     à la boutique (chantier 5). Skins dans `archive/static-unused/sprites/Weapons/{Guns,Rifles}`.
+   - **Carte-palier faite** : au niveau `WEAPON_MILESTONE_LEVEL` (3), si le joueur est encore
+     mono-arme, le level-up propose une **carte spéciale « NOUVELLE ARME »** (fuchsia, non
+     rerollable, définitive) → choix de la 2e arme parmi les archétypes non tenus
+     (`weaponChoices`). `Player.addWeapon` ajoute sans réinitialiser la 1re (upgrades préservées).
+     Le Punk redémarre **mono-pistolet**. Flags reset par run (`weaponMilestoneDone`).
+   - **Choix de l'arme de départ** : START (ou RESTART) ouvre un **picker « ARME DE DÉPART »**
+     (`weaponSelectOpen`/`launchWith` dans `game.ts`, overlay dans `GameWrapper`, clic ou touches
+     1-4) → `GameWorld` équipe `startingWeapon` au démarrage du run. La 2e arme reste le palier.
+   - Polish différé : muzzle-flash (_2 frames), et l'arme de départ n'est pas encore filtrée hors
+     du palier au cas où on veut la même en double (aujourd'hui le palier ne propose que les autres).
+4. **[ ] Pouvoir spécial (touche S)** : registre `POWER_TYPES` + dispatch, le joueur porte **un**
+   pouvoir, **cooldown**, certains avec combo d'input (en l'air + S = slam, direction tenue = dash,
+   maintien→relâche = charge). Note input : mouvement en **WASD**, **S = `down`** aujourd'hui mais
+   `down` ne fait rien de réel → **S libre** pour le pouvoir.
+5. **[ ] Crédits + boutique d'intermission** : nouveau drop (**caisse de crédits**, drop rare),
+   monnaie qui s'accumule ; la boutique **réutilise l'intermission** (piédestal) → overlay 3 offres
+   payantes, **spécifiques à chaque arme/pouvoir**. Agrège les upgrades des chantiers 3 & 4.
+   Option à garder en réserve : **intérêt** (bonus % sur le stock non dépensé — la tension Brotato).
 
 ## Parké : le système multi-perso (à reprendre plus tard)
 
