@@ -63,6 +63,45 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 	ctx.restore()
 }
 
+// Special-power badge: a small glyph tile under the XP bar that dims and fills bottom-up as
+// the power recharges, and brightens its border when ready. `charge` is 0→1 (1 = ready).
+// null when no power is equipped yet, so the badge only appears once one is earned.
+export const drawPowerHud = (
+	ctx: CanvasRenderingContext2D,
+	canvas: HTMLCanvasElement,
+	power: { glyph: string; color: string; charge: number } | null
+) => {
+	if (!power) return
+	const cx = canvas.width / 2
+	const size = 26
+	const x = cx - size / 2
+	const y = 84 // just under the XP bar
+	const ready = power.charge >= 1
+	ctx.save()
+	ctx.textAlign = 'center'
+	ctx.textBaseline = 'middle'
+	// Track + bottom-up recharge fill.
+	ctx.fillStyle = 'rgba(15, 23, 42, 0.8)' // slate-900
+	ctx.fillRect(x, y, size, size)
+	const ch = Math.max(0, Math.min(1, power.charge))
+	ctx.globalAlpha = ready ? 0.35 : 0.22
+	ctx.fillStyle = power.color
+	ctx.fillRect(x, y + size * (1 - ch), size, size * ch)
+	ctx.globalAlpha = 1
+	// Border brightens on ready.
+	ctx.strokeStyle = ready ? power.color : 'rgba(100, 116, 139, 0.7)' // slate-500
+	ctx.lineWidth = ready ? 2 : 1
+	ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1)
+	// Glyph + key hint.
+	ctx.fillStyle = ready ? '#e2e8f0' : '#94a3b8' // slate-200 / slate-400
+	ctx.font = '700 15px ui-monospace, monospace'
+	ctx.fillText(power.glyph, cx, y + size / 2 + 1)
+	ctx.fillStyle = ready ? power.color : 'rgba(100, 116, 139, 0.9)'
+	ctx.font = '700 9px ui-monospace, monospace'
+	ctx.fillText('S', cx, y + size + 7)
+	ctx.restore()
+}
+
 // Brief "WAVE N" flash (with the wave's theme name below) when the difficulty steps up.
 // `waveBanner` is the ms remaining on the current banner (WAVE_BANNER_MS → 0).
 export const drawWaveBanner = (

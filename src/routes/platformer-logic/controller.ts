@@ -6,6 +6,7 @@ export interface KeyState {
 	up: boolean
 	down: boolean
 	punch: boolean
+	power: boolean // one-shot: set on an S press, consumed by GameWorld.updatePower
 }
 
 export const keys = {
@@ -14,6 +15,7 @@ export const keys = {
 	up: false,
 	down: false,
 	punch: false,
+	power: false,
 	onkeydown: (e: KeyboardEvent, player: Player) => {
 		switch (e.code) {
 			case 'KeyA':
@@ -29,6 +31,9 @@ export const keys = {
 				keys.up = true
 				break
 			case 'KeyS':
+				// Rising edge only (ignore the OS key-repeat) → fire the equipped special power.
+				// `down` is still tracked for a future hold/charge power; it drives nothing today.
+				if (!keys.down) keys.power = true
 				keys.down = true
 				break
 			case 'KeyK':

@@ -93,10 +93,27 @@ spécifique. Cinq systèmes, à construire dans cet ordre. **Décisions prises**
      1-4) → `GameWorld` équipe `startingWeapon` au démarrage du run. La 2e arme reste le palier.
    - Polish différé : muzzle-flash (_2 frames), et l'arme de départ n'est pas encore filtrée hors
      du palier au cas où on veut la même en double (aujourd'hui le palier ne propose que les autres).
-4. **[ ] Pouvoir spécial (touche S)** : registre `POWER_TYPES` + dispatch, le joueur porte **un**
-   pouvoir, **cooldown**, certains avec combo d'input (en l'air + S = slam, direction tenue = dash,
-   maintien→relâche = charge). Note input : mouvement en **WASD**, **S = `down`** aujourd'hui mais
-   `down` ne fait rien de réel → **S libre** pour le pouvoir.
+4. **[x] Pouvoir spécial (touche S)** — fait :
+   - `POWER_TYPES` (`powerTypes.ts`, 3e jumeau d'`ENEMY_TYPES`/`WEAPON_TYPES`) : 3 archétypes
+     mécaniquement distincts, chacun sur un contexte d'input différent — `dash` (esquive
+     directionnelle invulnérable, dir tenue sinon face), `slam`/**Onde de choc** (en l'air : plonge
+     i-framée → souffle de zone à l'atterrissage ; au sol : stomp direct), `nova` (explosion
+     instantanée tout autour, bouton panique). Dégâts + recul + anneau de souffle partagés
+     (`GameWorld.shockwave`, réutilise `enemy.hit`/`onEnemyKilled`).
+   - Classe `Power` (`Power.ts`, jumelle de `Weapon`) : porte le cooldown + copies mutables des
+     stats (upgradeables plus tard côté boutique). `Player.power: Power | null`, `equipPower(kind)`,
+     états moteur `dashSteps`/`dashVX`/`slamming` sur le Player. Dispatch par `kind` dans
+     `GameWorld.activatePower` (seam comme `attackStyle`/`behavior`).
+   - **Input** : `S` = front montant dans `controller.ts` (`keys.power`, ignore la répétition OS,
+     comme le saut), consommé dans la boucle (`GameWorld.updatePower`). `down` reste tracké pour un
+     futur pouvoir maintien→relâche mais ne pilote toujours rien.
+   - **Carte-palier** : au niveau `POWER_MILESTONE_LEVEL` (5), si le joueur n'a pas de pouvoir, le
+     level-up propose une carte spéciale **« NOUVEAU POUVOIR »** (indigo, non rerollable, définitive)
+     → `powerChoices`. L'état milestone est généralisé (`GameWorld.milestone: 'weapon' | 'power' | null`,
+     ex-`isWeaponMilestone`). HUD : badge glyphe + jauge de recharge sous la barre d'XP (`drawPowerHud`).
+   - Polish différé : pas d'upgrades de pouvoir dans le pool XP (scope `power`, viendront à la
+     boutique) ; feel à tuner (portées/cooldowns/dégâts) ; combo maintien→relâche (charge) pas encore
+     câblé ; sprites/VFX dédiés (anneau canvas + puff `smoke_14` pour l'instant).
 5. **[ ] Crédits + boutique d'intermission** : nouveau drop (**caisse de crédits**, drop rare),
    monnaie qui s'accumule ; la boutique **réutilise l'intermission** (piédestal) → overlay 3 offres
    payantes, **spécifiques à chaque arme/pouvoir**. Agrège les upgrades des chantiers 3 & 4.

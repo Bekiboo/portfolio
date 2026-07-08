@@ -5,6 +5,8 @@ import type { KeyState } from './controller'
 import { CHARACTERS, type CharacterType } from './characters'
 import { Weapon } from './Weapon'
 import type { WeaponKind } from './weaponTypes'
+import { Power } from './Power'
+import type { PowerKind } from './powerTypes'
 import { collision, getSprite, hasSprite } from './utils'
 
 const GRAVITY = 0.33
@@ -28,6 +30,16 @@ export class Player {
 	// fires at the nearest enemy to its own muzzle — GameWorld drives them each step. Built
 	// from the character's `weapons` list in applyCharacter().
 	weapons: Weapon[] = []
+	// Special power (touche S), at most one. Null until granted at a level milestone; GameWorld
+	// ticks its cooldown and dispatches its effect (Power / powerTypes). Reset by applyCharacter.
+	power: Power | null = null
+	// Dash motion state (the 'dash' power): while dashSteps > 0 the horizontal velocity is
+	// forced to dashVX and movement keys are ignored, so the burst can't be steered or cancelled.
+	dashSteps = 0
+	dashVX = 0
+	// True while a 'slam' plunge is in progress — GameWorld watches for the landing to fire the
+	// ground shockwave (resolveSlamLanding).
+	slamming = false
 	jumpStrength = 8 // upward jump velocity (Spring upgrade raises it); reset each run
 	isFalling = false
 	jumpAvailable = 2
@@ -57,6 +69,9 @@ export class Player {
 		this.maxFrame = sprite.frames ?? 0
 		this.frame = 1
 		this.equip(cfg.weapons)
+		this.power = null // a chassis has no innate power in v1; it's earned at a level milestone
+		this.dashSteps = 0
+		this.slamming = false
 	}
 
 	// (Re)build the equipped weapons from a kind list (fresh instances at base stats). One
@@ -74,6 +89,27 @@ export class Player {
 		if (this.weapons.length >= 2) return
 		if (this.weapons.length === 1) this.weapons[0].side = 'left'
 		this.weapons.push(new Weapon(kind, this.weapons.length === 0 ? 'center' : 'right'))
+	}
+
+	// Grant the special power (the level-milestone reward). Replaces any current one.
+	equipPower(kind: PowerKind) {
+		this.power = new Power(kind)
+	}
+
+	// Begin a dash: `vx` px/step for `steps` steps, ignoring movement keys meanwhile so the
+	// burst flies straight (GameWorld grants the i-frames). Faces the dash direction.
+	startDash(vx: number, steps: number) {
+		this.dashVX = vx
+		this.dashSteps = steps
+		this.direction = vx < 0 ? 'left' : 'right'
+		effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 48 }, 'smoke_12'))
+	}
+
+	// Begin a slam: plunge straight down at `speed`; GameWorld fires the shockwave on landing.
+	startSlam(speed: number) {
+		this.velocity.y = speed
+		this.slamming = true
+		this.isFalling = true
 	}
 
 	update(canvas: HTMLCanvasElement, keys: KeyState, platforms: Platform[], deltaTime: number) {
@@ -165,6 +201,14 @@ export class Player {
 	}
 
 	#handleKeys(keys: KeyState) {
+		// Mid-dash: force the burst velocity and ignore movement keys so it can't be steered or
+		// cancelled. Ticks the dash down here (once per step, alongside the position update).
+		if (this.dashSteps > 0) {
+			this.dashSteps--
+			this.velocity.x = this.dashVX
+			return
+		}
+
 		if ((keys['right'] || keys['left']) && !this.velocity.y && !keys['punch']) {
 			this.#playerSprite('run')
 		}

@@ -114,12 +114,19 @@
 	     not the Start/Stop hub behind it. Forces a pick before play resumes. -->
 	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
 		<div class="level-up text-center">
-			{#if world.isWeaponMilestone}
+			{#if world.milestone === 'weapon'}
 				<div class="font-bauhaus text-2xl font-bold tracking-widest text-fuchsia-400">
 					NOUVELLE ARME
 				</div>
 				<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">
 					Choisis ta deuxième arme
+				</div>
+			{:else if world.milestone === 'power'}
+				<div class="font-bauhaus text-2xl font-bold tracking-widest text-indigo-400">
+					NOUVEAU POUVOIR
+				</div>
+				<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">
+					Choisis ton pouvoir spécial (touche S)
 				</div>
 			{:else}
 				<div class="font-bauhaus text-2xl font-bold tracking-widest text-emerald-400">
@@ -138,7 +145,7 @@
 					</button>
 				{/each}
 			</div>
-			{#if !world.isWeaponMilestone}
+			{#if !world.milestone}
 				<button
 					class="reroll"
 					onclick={() => world.reroll()}
@@ -303,6 +310,14 @@
 	}
 	.upgrade[data-kind='weapon'] .key {
 		color: rgb(232 121 249);
+	}
+	/* Power-milestone cards: indigo, same beefier treatment as the weapon pick. */
+	.upgrade[data-kind='power'] {
+		border-color: rgb(129 140 248 / 0.6); /* indigo-400 */
+		background: rgb(49 46 129 / 0.3); /* indigo-900 */
+	}
+	.upgrade[data-kind='power'] .key {
+		color: rgb(129 140 248);
 	}
 	.reroll {
 		margin-top: 0.75rem;

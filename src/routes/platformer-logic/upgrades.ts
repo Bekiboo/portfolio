@@ -2,6 +2,7 @@ import { get } from 'svelte/store'
 import { level, maxHp, playerHp } from '$lib/game'
 import type { GameWorld } from './GameWorld.svelte'
 import { WEAPON_TYPES, type WeaponKind } from './weaponTypes'
+import { POWER_TYPES, type PowerKind } from './powerTypes'
 
 // Run-scoped tunables. Each starts at its base every run (GameWorld.resetUpgrades)
 // and is bumped by the level-up upgrades below. The caps keep the snowball from
@@ -33,7 +34,7 @@ export const BASE_REROLLS = 3 // rerolls granted per run (DRG-style agency witho
 // On each level-up the game freezes and offers 3 of these at random. Most stack
 // indefinitely (VS-style); Bandage-style heals are handled by ground med-kits, not
 // here. `apply`/`available` take the GameWorld so an upgrade can mutate run state.
-export type UpgradeKind = 'atk' | 'def' | 'util' | 'weapon'
+export type UpgradeKind = 'atk' | 'def' | 'util' | 'weapon' | 'power'
 // Economy split (roadmap chantier 2): 'generic' upgrades are the forced VS-style
 // XP rewards (HP, speed, jump, magnet, regen, shield, global cadence); 'weapon'/'power'
 // upgrades are the *chosen* ones that will move to the paid credits shop (chantier 5).
@@ -150,5 +151,22 @@ export const weaponChoices = (w: GameWorld): Upgrade[] => {
 			kind: 'weapon' as const,
 			scope: 'weapon' as const,
 			apply: (world: GameWorld) => world.player.addWeapon(k)
+		}))
+}
+
+// The power-milestone offer: one card per special power the player doesn't already hold, each
+// equipping it as the S-key ability (Player.equipPower). Presented in place of the normal roll
+// on the power milestone (see GameWorld.openPick); never part of the XP pool. In v1 the player
+// holds no power until this card, so it always offers the full set.
+export const powerChoices = (w: GameWorld): Upgrade[] => {
+	return (Object.keys(POWER_TYPES) as PowerKind[])
+		.filter((k) => w.player.power?.type.kind !== k)
+		.map((k) => ({
+			id: `power:${k}`,
+			name: POWER_TYPES[k].name,
+			desc: POWER_TYPES[k].blurb,
+			kind: 'power' as const,
+			scope: 'power' as const,
+			apply: (world: GameWorld) => world.player.equipPower(k)
 		}))
 }

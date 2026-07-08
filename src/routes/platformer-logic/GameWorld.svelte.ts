@@ -44,11 +44,13 @@ import {
 	waveContactDamage,
 	type WaveDef
 } from './waves'
-import { drawHud, drawWaveBanner, drawIntermissionPrompt, WAVE_BANNER_MS } from './hud'
+import { drawHud, drawPowerHud, drawWaveBanner, drawIntermissionPrompt, WAVE_BANNER_MS } from './hud'
 import { nearestEnemy } from './los'
+import type { Power } from './Power'
 import {
 	rollChoices,
 	weaponChoices,
+	powerChoices,
 	BASE_INVULN,
 	BASE_MAGNET,
 	BASE_JUMP,
@@ -72,6 +74,7 @@ const INTERMISSION_MAGNET_MUL = 10 // pickup-radius boost during the rest so lef
 const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns clustered and legible
 const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
 const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
+const POWER_MILESTONE_LEVEL = 5 // reaching this level grants a special power on the S key (another special pick)
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -127,11 +130,17 @@ export class GameWorld {
 	levelUpOpen = $state(false)
 	choices = $state<Upgrade[]>([])
 	rerolls = $state(0)
-	// True while the current pick is the weapon-milestone card (choose a 2nd weapon) rather
-	// than a normal upgrade — the UI swaps its heading and hides the reroll for it.
-	isWeaponMilestone = $state(false)
+	// Which special milestone card the current pick is, if any ('weapon' = choose a 2nd weapon,
+	// 'power' = choose a special power) rather than a normal upgrade — the UI swaps its heading
+	// and hides the reroll for these. null = ordinary level-up roll.
+	milestone = $state<'weapon' | 'power' | null>(null)
 	private pendingLevelUps = 0
 	private weaponMilestoneDone = false // the 2nd-weapon card only ever appears once per run
+	private powerMilestoneDone = false // the power card only ever appears once per run
+
+	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime and
+	// drawn over the sprites. Kept off the entity pools since they never interact.
+	private shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
 
 	// --- Wave / run timing ---
 	private spawnTimer = 0
@@ -419,6 +428,12 @@ export class GameWorld {
 		// Weapon combat stats (cadence, count, damage, spread, speed, range) are per-weapon now
 		// and reset on their own instances; the level-up weapon upgrades bump these copies.
 		for (const weapon of this.player.weapons) weapon.reset()
+		// Special power is granted mid-run (null at run start), but clear its motion state and
+		// cooldown defensively in case a run is re-entered while one is somehow still held.
+		this.player.dashSteps = 0
+		this.player.slamming = false
+		this.player.power?.reset()
+		this.shockRings.length = 0
 	}
 
 	// Passive regeneration (Regen upgrade): heal fractional HP each step, carrying the
@@ -440,13 +455,14 @@ export class GameWorld {
 	// Spend a reroll to redraw the current choices (no-op when none are left, or on the
 	// weapon-milestone card — the 2nd-weapon offer isn't rerollable).
 	reroll() {
-		if (!this.levelUpOpen || this.isWeaponMilestone || this.rerolls <= 0) return
+		if (!this.levelUpOpen || this.milestone || this.rerolls <= 0) return
 		this.rerolls--
 		this.choices = rollChoices(this)
 	}
 
-	// Build the next pick: the weapon-milestone card (choose a 2nd weapon) once the player
-	// reaches WEAPON_MILESTONE_LEVEL still solo, otherwise the normal weighted upgrade roll.
+	// Build the next pick. Milestone cards replace the normal roll at set levels and fire once
+	// each: the 2nd weapon (WEAPON_MILESTONE_LEVEL, still solo) first, then the special power
+	// (POWER_MILESTONE_LEVEL, none held). Otherwise the normal weighted upgrade roll.
 	private openPick() {
 		if (
 			!this.weaponMilestoneDone &&
@@ -456,11 +472,19 @@ export class GameWorld {
 			const offers = weaponChoices(this)
 			if (offers.length) {
 				this.choices = offers
-				this.isWeaponMilestone = true
+				this.milestone = 'weapon'
 				return
 			}
 		}
-		this.isWeaponMilestone = false
+		if (!this.powerMilestoneDone && !this.player.power && get(level) >= POWER_MILESTONE_LEVEL) {
+			const offers = powerChoices(this)
+			if (offers.length) {
+				this.choices = offers
+				this.milestone = 'power'
+				return
+			}
+		}
+		this.milestone = null
 		this.choices = rollChoices(this)
 	}
 
@@ -477,7 +501,8 @@ export class GameWorld {
 	chooseUpgrade(u: Upgrade) {
 		if (!this.levelUpOpen || !u) return
 		u.apply(this)
-		if (this.isWeaponMilestone) this.weaponMilestoneDone = true // 2nd weapon claimed
+		if (this.milestone === 'weapon') this.weaponMilestoneDone = true // 2nd weapon claimed
+		else if (this.milestone === 'power') this.powerMilestoneDone = true // power claimed
 		// A level-up fully heals (Brotato-style reward for surviving the climb). Applied
 		// AFTER the pick so a +max-HP choice (Vitality) tops up to the new, higher cap.
 		playerHp.set(get(maxHp))
@@ -485,7 +510,7 @@ export class GameWorld {
 		if (this.pendingLevelUps > 0) this.openPick()
 		else {
 			this.levelUpOpen = false
-			this.isWeaponMilestone = false
+			this.milestone = null
 		}
 	}
 
@@ -747,6 +772,114 @@ export class GameWorld {
 		}
 	}
 
+	// --- Special power (touche S) ---------------------------------------------
+	// Tick the equipped power's cooldown each step and fire it on an 'S' press (a rising-edge
+	// flag the controller sets). No power → just clear the flag so a later grant doesn't fire
+	// a stale press. Called every step while playing.
+	private updatePower() {
+		const power = this.player.power
+		if (!power) {
+			keys.power = false
+			return
+		}
+		power.tick()
+		if (keys.power) {
+			keys.power = false
+			if (power.ready) this.activatePower(power)
+		}
+	}
+
+	// Dispatch the power by kind (the seam mirrors attackStyle / enemy behaviour). Each case
+	// reads the power's mutable stats, may grant i-frames, and puts it on cooldown.
+	private activatePower(power: Power) {
+		const p = this.player
+		switch (power.type.kind) {
+			case 'dash': {
+				// Dash the held direction, or the way we face if no direction is held.
+				const dir = keys.left ? -1 : keys.right ? 1 : p.direction === 'left' ? -1 : 1
+				p.startDash(dir * power.type.speed, power.type.duration)
+				this.invuln = Math.max(this.invuln, power.type.invulnSteps)
+				break
+			}
+			case 'slam': {
+				if (p.isFalling) {
+					// Airborne: plunge; the shockwave fires on landing (resolveSlamLanding).
+					p.startSlam(power.type.speed)
+					this.invuln = Math.max(this.invuln, power.type.invulnSteps)
+				} else {
+					// Grounded: stomp right here, no plunge.
+					this.shockwave(
+						p.pos.x + p.width / 2, p.pos.y + p.height,
+						power.radius, power.damage, power.knockback, power.type.color
+					)
+				}
+				break
+			}
+			case 'nova': {
+				this.shockwave(
+					p.pos.x + p.width / 2, p.pos.y + p.height / 2,
+					power.radius, power.damage, power.knockback, power.type.color
+				)
+				this.invuln = Math.max(this.invuln, power.type.invulnSteps)
+				break
+			}
+		}
+		power.trigger()
+	}
+
+	// The slam plunge landed: detonate the ground shockwave once. Watched each step after the
+	// player moves, so isFalling is fresh (the vertical collision cleared it on touchdown).
+	private resolveSlamLanding() {
+		const p = this.player
+		if (!p.slamming || p.isFalling) return
+		p.slamming = false
+		const power = p.power
+		if (!power || power.type.kind !== 'slam') return
+		this.shockwave(
+			p.pos.x + p.width / 2, p.pos.y + p.height,
+			power.radius, power.damage, power.knockback, power.type.color
+		)
+	}
+
+	// A blast at (cx, cy): damage + knockback every enemy within `radius`, spawn an expanding
+	// ring + a burst puff. Shared by nova (instant) and slam (on landing). A killing blow drops
+	// its gem/score the same way a bolt would — enemy.hit self-removes and onEnemyKilled banks.
+	private shockwave(cx: number, cy: number, radius: number, damage: number, knockback: number, color: string) {
+		this.shockRings.push({ x: cx, y: cy, max: radius, t: 1, color })
+		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
+		for (const enemy of enemiesStore.list.slice()) {
+			const ex = enemy.pos.x + enemy.width / 2
+			const ey = enemy.pos.y + enemy.height / 2
+			const d = Math.hypot(ex - cx, ey - cy)
+			if (d > radius) continue
+			const nx = (ex - cx) / (d || 1)
+			enemy.pos.x += nx * knockback
+			enemy.pos.y -= knockback * 0.3 // a little upward pop for feel
+			if (damage > 0 && enemy.hit(damage)) this.onEnemyKilled(enemy)
+		}
+	}
+
+	// Age and draw the blast rings (nova / slam). Purely visual; expands and fades over ~0.32s.
+	private drawShockRings(frameTime: number) {
+		for (let i = this.shockRings.length - 1; i >= 0; i--) {
+			const ring = this.shockRings[i]
+			ring.t -= frameTime / 320
+			if (ring.t <= 0) {
+				this.shockRings.splice(i, 1)
+				continue
+			}
+			const grow = 0.45 + (1 - ring.t) * 0.95 // 45% → ~140% of the blast radius
+			this.ctx.save()
+			this.ctx.globalAlpha = Math.max(0, ring.t)
+			this.ctx.strokeStyle = ring.color
+			this.ctx.lineWidth = 4
+			this.ctx.beginPath()
+			this.ctx.arc(ring.x, ring.y, ring.max * grow, 0, Math.PI * 2)
+			this.ctx.stroke()
+			this.ctx.restore()
+		}
+	}
+
 	// Enemy took a lethal hit: bank score, drop its XP gem (falls under gravity) and,
 	// while the player is hurt, maybe a med-kit.
 	private onEnemyKilled(enemy: Enemy) {
@@ -1000,8 +1133,11 @@ export class GameWorld {
 			this.rerolls = BASE_REROLLS
 			this.levelUpOpen = false
 			this.pendingLevelUps = 0
-			this.isWeaponMilestone = false
+			this.milestone = null
 			this.weaponMilestoneDone = false
+			this.powerMilestoneDone = false
+			this.shockRings.length = 0
+			keys.power = false
 			this.spawnTimer = 0
 			this.invuln = 0
 			this.waveTimer = 0
@@ -1021,7 +1157,7 @@ export class GameWorld {
 		if (!playing && this.levelUpOpen) {
 			this.levelUpOpen = false
 			this.pendingLevelUps = 0
-			this.isWeaponMilestone = false
+			this.milestone = null
 		}
 		// Sim freeze (field preserved, not cleared): either a level-up pick or the pause menu.
 		const paused = this.levelUpOpen || get(pausedStore)
@@ -1069,6 +1205,8 @@ export class GameWorld {
 			this.intermission = false
 			this.spawnDwell = 0
 			this.spawnFlash = 0
+			if (this.shockRings.length) this.shockRings.length = 0
+			keys.power = false
 		}
 
 		// Advance physics in fixed steps, consuming the elapsed real time. A level-up
@@ -1104,6 +1242,12 @@ export class GameWorld {
 						.slice()
 						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
 				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
+				// Special power (S): tick its cooldown, fire on press, and detonate a slam that
+				// just landed. After player.update so isFalling reflects this step's landing.
+				if (playing) {
+					this.updatePower()
+					this.resolveSlamLanding()
+				}
 				// Auto-attack: each weapon aims from its own muzzle and fires on its own cadence.
 				this.playerCombat(playing)
 				if (playing) {
@@ -1160,9 +1304,20 @@ export class GameWorld {
 		if (playing) this.drawShield(alpha)
 		// Snapshot: Effect.draw() self-removes from the live pool when its animation ends.
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
+		// Nova / slam blast rings, over everything (age out even if the run just ended).
+		this.drawShockRings(frameTime)
 
 		if (playing) {
 			drawHud(this.ctx, this.canvas)
+			// Special-power badge (glyph + recharge wipe), or nothing until one is earned.
+			const pw = this.player.power
+			drawPowerHud(
+				this.ctx,
+				this.canvas,
+				pw
+					? { glyph: pw.type.glyph, color: pw.type.color, charge: 1 - pw.cooldown / Math.max(1, pw.cooldownSteps) }
+					: null
+			)
 			if (this.waveBanner > 0)
 				drawWaveBanner(this.ctx, this.canvas, this.waveBanner, this.waveBannerLabel)
 			// During the rest phase, prompt the player to walk back to spawn (pulsing), and
