@@ -177,10 +177,12 @@
 				<div class="font-bauhaus text-2xl font-bold tracking-widest text-amber-400">BOUTIQUE</div>
 				<div class="font-mono text-sm font-bold tracking-widest text-amber-300">◈ {$credits}</div>
 			</div>
-			<div class="mt-1 mb-4 font-mono text-xs tracking-widest text-slate-400">
+			<div class="mt-1 mb-3 font-mono text-xs tracking-widest text-slate-400">
 				Améliore tes armes &amp; ton pouvoir
 			</div>
-			<div class="flex flex-col gap-2">
+			<!-- Board 1: per-weapon/power upgrades (keys 1·2·3). -->
+			<div class="board-label">Armes &amp; Pouvoir</div>
+			<div class="mt-1 flex flex-col gap-2">
 				{#each world.shopOffers as offer, i (offer.id)}
 					<button
 						class="upgrade"
@@ -202,11 +204,35 @@
 					</div>
 				{/if}
 			</div>
+			<!-- Board 2: passive items / misc bonuses (keys 4·5·6). -->
+			<div class="board-label mt-4">Objets</div>
+			<div class="mt-1 flex flex-col gap-2">
+				{#each world.itemOffers as offer, i (offer.id)}
+					<button
+						class="upgrade"
+						data-kind="item"
+						disabled={$credits < offer.cost}
+						onclick={() => world.buyItem(offer)}
+					>
+						<span class="key">{i + 4}</span>
+						<span class="flex flex-col items-start">
+							<span class="name">{offer.glyph} {offer.name}</span>
+							<span class="desc">{offer.desc}</span>
+						</span>
+						<span class="cost" class:short={$credits < offer.cost}>◈ {offer.cost}</span>
+					</button>
+				{/each}
+				{#if world.itemOffers.length === 0}
+					<div class="py-2 font-mono text-xs tracking-widest text-slate-500">
+						Tous les objets sont acquis
+					</div>
+				{/if}
+			</div>
 			<button onclick={() => world.launchFromShop()} class="mt-4 w-full" aria-label="Lancer la vague">
 				<Button text="LANCER LA VAGUE ▶" classes="uppercase w-full" />
 			</button>
 			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
-				Touches 1 · 2 · 3 achètent · Entrée lance
+				1 · 2 · 3 armes · 4 · 5 · 6 objets · Entrée lance
 			</div>
 		</div>
 	</div>
@@ -392,6 +418,23 @@
 	}
 	.upgrade[data-kind='power'] .key {
 		color: rgb(129 140 248);
+	}
+	/* Passive-item cards (shop's second board): teal, distinct from every other family. */
+	.upgrade[data-kind='item'] {
+		border-color: rgb(45 212 191 / 0.55); /* teal-400 */
+	}
+	.upgrade[data-kind='item'] .key {
+		color: rgb(45 212 191);
+	}
+	/* Small section header above each shop board. */
+	.board-label {
+		font-family: ui-monospace, monospace;
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		text-align: left;
+		color: rgb(100 116 139); /* slate-500 */
 	}
 	.reroll {
 		margin-top: 0.75rem;

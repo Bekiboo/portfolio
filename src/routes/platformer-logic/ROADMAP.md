@@ -156,6 +156,32 @@ vit désormais **uniquement à la boutique**. Nouvelles stats + où elles agisse
   (saut), Bouclier (Bulwark/Recharge), Greed — à réintégrer plus tard si besoin (boutique ou pool).
   Polish : pas de nombres flottants de dégâts/crit (juste un burst sur crit), à tuner (pas/caps).
 
+### Objets passifs & hooks (3ᵉ canal d'acquisition — `items.ts`)
+
+Troisième canal, à côté du pool XP (stats forcées) et de la boutique arme/pouvoir (réglage choisi) :
+des **reliques run-scoped** achetées sur un **2ᵉ tableau de la boutique** (touches 4·5·6). Le point
+clé est **architectural** : ajouter du contenu = **ajouter une entrée de data**, jamais éditer le
+moteur.
+
+- **Registry** `ITEM_TYPES` (`items.ts`) : chaque objet a `id/name/blurb/glyph/color/cost/maxStacks`
+  + les **hooks** auxquels il s'abonne. Instance = `ItemInstance` (`stacks` + `state: Record<string,
+  number>` pour l'état par copie, ex. positions/timers de drone).
+- **Hooks fan-out** (`GameWorld`, boucles fines `itemsOnX`) branchés aux seams :
+  `onKill` (`onEnemyKilled`) · `onHit` (`resolveHits`) · `onDamaged` (`damagePlayer`, sur perte de PV
+  réelle) · `onWaveStart` (`startNextWave`) · `onTick` (pas physique) · `onDraw` (rendu).
+- **Ré-entrance sécurisée** : un objet `onKill` peut déclencher un `shockwave` (public) qui rappelle
+  `onEnemyKilled` → chaîne. Garde `enemy.health <= 0 → continue` ajoutée dans `shockwave` **et**
+  `resolveHits` pour ne jamais re-compter un mort.
+- **Boutique** : `rollItemOffers` (prix qui monte par stack), `buyItem` (refill du slot), overlay à
+  2 tableaux dans `GameWrapper.svelte` (accent teal `data-kind='item'`).
+- **5 objets d'amorçage** (un par hook, prouvent l'archi) : **Bouclier renforcé** (`onAcquire`,
+  +charge/regen) · **Bottes à ressort** (`onAcquire`, saut+vitesse) · **Drone de combat**
+  (`onTick`+`onDraw`, orbite + tir auto via `projectilesStore`, profite de +Dégâts/crit) · **Épines**
+  (`onDamaged`, blast de riposte) · **Charge explosive** (`onKill`, blast en chaîne auto-équilibré).
+- À faire ensuite (archi prête, = data) : trade-offs / stats négatives, objets à malus, élites/boss
+  aux jalons de vague, nombres flottants ; brancher des objets sur `onHit`/`onWaveStart` (câblés,
+  non encore utilisés) ; tuner coûts/caps/nombre de slots.
+
 ## Parké : le système multi-perso (à reprendre plus tard)
 
 Rangé de côté volontairement (on était allé trop vite). **Rien n'est perdu** — le gros est

@@ -66,6 +66,7 @@ import {
 	BASE_REROLLS,
 	type Upgrade
 } from './upgrades'
+import { ItemInstance, rollItemOffers, type ItemType, type ItemOffer } from './items'
 
 // Fixed-timestep physics with render interpolation ("Fix Your Timestep"): the
 // simulation advances in constant 60 Hz steps (deterministic and refresh-rate
@@ -82,7 +83,8 @@ const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns c
 const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
 const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
 const POWER_MILESTONE_LEVEL = 5 // reaching this level grants a special power on the S key (another special pick)
-const SHOP_SLOTS = 3 // offers shown at the intermission shop
+const SHOP_SLOTS = 3 // weapon/power offers shown at the intermission shop
+const ITEM_SLOTS = 3 // passive-item offers shown on the shop's second board
 const CREDIT_DROP_CHANCE = 0.08 // chance a slain enemy drops a credit crate (rare)
 const CREDIT_CRATE_VALUE = 5 // credits banked per crate
 
@@ -168,6 +170,14 @@ export class GameWorld {
 	shopOpen = $state(false)
 	shopOffers = $state<ShopOffer[]>([])
 
+	// --- Passive items (roadmap: misc bonuses) -------------------------------
+	// The third acquisition channel: run-scoped relics bought from the shop's SECOND board. Each
+	// subscribes to combat/lifecycle hooks (onKill/onHit/onDamaged/onWaveStart/onTick/onDraw) that
+	// this class fans out at fixed seams, so adding an item is a data entry in items.ts — never an
+	// engine edit. `itemOffers` drives the board (reactive); `items` is the held collection.
+	items: ItemInstance[] = []
+	itemOffers = $state<ItemOffer[]>([])
+
 	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime and
 	// drawn over the sprites. Kept off the entity pools since they never interact.
 	private shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
@@ -229,6 +239,10 @@ export class GameWorld {
 			else if (e.code === 'Digit1' || e.code === 'Numpad1') this.buyOffer(this.shopOffers[0])
 			else if (e.code === 'Digit2' || e.code === 'Numpad2') this.buyOffer(this.shopOffers[1])
 			else if (e.code === 'Digit3' || e.code === 'Numpad3') this.buyOffer(this.shopOffers[2])
+			// 4/5/6 buy from the item board (the second column of the shop overlay).
+			else if (e.code === 'Digit4' || e.code === 'Numpad4') this.buyItem(this.itemOffers[0])
+			else if (e.code === 'Digit5' || e.code === 'Numpad5') this.buyItem(this.itemOffers[1])
+			else if (e.code === 'Digit6' || e.code === 'Numpad6') this.buyItem(this.itemOffers[2])
 			return
 		}
 		// Pause menu open: Escape resumes; movement keys are swallowed so they don't leak
@@ -357,6 +371,7 @@ export class GameWorld {
 		// A themed wave can open with an elite (slow bullet-sponge): a dedicated rift tears
 		// open and strides it out, so even the miniboss beat arrives through a portal.
 		if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
+		this.itemsOnWaveStart() // items may prime themselves at the top of a wave
 	}
 
 	// Advance the rest phase: once the player walks back onto the pedestal, open the shop (which
@@ -371,6 +386,7 @@ export class GameWorld {
 	// Stock the shop from the player's current weapons/power and freeze the sim.
 	private openShop() {
 		this.shopOffers = rollShopOffers(this, SHOP_SLOTS)
+		this.itemOffers = rollItemOffers(this, ITEM_SLOTS)
 		this.shopOpen = true
 	}
 
@@ -387,6 +403,20 @@ export class GameWorld {
 		this.shopOffers = this.shopOffers
 			.map((o) => (o.id === offer.id ? next : o))
 			.filter((o): o is ShopOffer => !!o)
+	}
+
+	// Buy a passive item from the shop's second board: pay, grant/stack it, then refill just that
+	// slot (excluding the other visible item slots). No-op if unaffordable or the item capped out.
+	buyItem(offer: ItemOffer | undefined) {
+		if (!this.shopOpen || !offer) return
+		if (get(credits) < offer.cost || !offer.available()) return
+		credits.update((c) => c - offer.cost)
+		offer.apply()
+		const others = new Set(this.itemOffers.filter((o) => o.id !== offer.id).map((o) => o.id))
+		const [next] = rollItemOffers(this, 1, others)
+		this.itemOffers = this.itemOffers
+			.map((o) => (o.id === offer.id ? next : o))
+			.filter((o): o is ItemOffer => !!o)
 	}
 
 	// Leave the shop and start the next wave (the shop's primary action).
@@ -508,6 +538,9 @@ export class GameWorld {
 		this.player.slamming = false
 		this.player.power?.reset()
 		this.shockRings.length = 0
+		// Drop any held passive items (a fresh run starts with none; their stat effects were folded
+		// into the baseline stats reset above, so clearing the list is enough).
+		this.items.length = 0
 	}
 
 	// Passive regeneration (Regen upgrade): heal fractional HP each step, carrying the
@@ -586,6 +619,50 @@ export class GameWorld {
 			this.levelUpOpen = false
 			this.milestone = null
 		}
+	}
+
+	// --- Passive items (misc bonuses) ----------------------------------------
+	// Grant an item, or stack it if already held and below its cap, running its onAcquire each time
+	// so per-stack stat bumps apply. Bought from the shop's item board (buyItem).
+	acquireItem(type: ItemType) {
+		const max = type.maxStacks ?? 1
+		const existing = this.items.find((it) => it.type.id === type.id)
+		if (existing) {
+			if (existing.stacks >= max) return
+			existing.stacks++
+			type.onAcquire?.(this, existing)
+		} else {
+			const inst = new ItemInstance(type)
+			this.items.push(inst)
+			type.onAcquire?.(this, inst)
+		}
+	}
+
+	// How many stacks of an item the player holds (0 if none) — the shop prices/caps offers with it.
+	itemStacks(id: string) {
+		return this.items.find((it) => it.type.id === id)?.stacks ?? 0
+	}
+
+	// Hook fan-out: each held item may subscribe to these combat/lifecycle seams. Kept as thin loops
+	// so a new item is a data entry in items.ts, never an engine edit here. onKill can re-enter (an
+	// item's blast kills more), which is fine — shockwave/resolveHits skip already-dead enemies.
+	private itemsOnKill(enemy: Enemy) {
+		for (const it of this.items) it.type.onKill?.(this, enemy, it)
+	}
+	private itemsOnHit(enemy: Enemy, dmg: number) {
+		for (const it of this.items) it.type.onHit?.(this, enemy, dmg, it)
+	}
+	private itemsOnDamaged(amount: number) {
+		for (const it of this.items) it.type.onDamaged?.(this, amount, it)
+	}
+	private itemsOnWaveStart() {
+		for (const it of this.items) it.type.onWaveStart?.(this, it)
+	}
+	private itemsTick(dt: number) {
+		for (const it of this.items) it.type.onTick?.(this, dt, it)
+	}
+	private itemsDraw(alpha: number) {
+		for (const it of this.items) it.type.onDraw?.(this, this.ctx, alpha, it)
 	}
 
 	// --- Spawn director -------------------------------------------------------
@@ -921,10 +998,12 @@ export class GameWorld {
 	// A blast at (cx, cy): damage + knockback every enemy within `radius`, spawn an expanding
 	// ring + a burst puff. Shared by nova (instant) and slam (on landing). A killing blow drops
 	// its gem/score the same way a bolt would — enemy.hit self-removes and onEnemyKilled banks.
-	private shockwave(cx: number, cy: number, radius: number, damage: number, knockback: number, color: string) {
+	// Public so passive items (thorns, explosive) can trigger their own blasts through the same path.
+	shockwave(cx: number, cy: number, radius: number, damage: number, knockback: number, color: string) {
 		this.shockRings.push({ x: cx, y: cy, max: radius, t: 1, color })
 		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
 		for (const enemy of enemiesStore.list.slice()) {
+			if (enemy.health <= 0) continue // already killed this chain — don't double-count the kill
 			const ex = enemy.pos.x + enemy.width / 2
 			const ey = enemy.pos.y + enemy.height / 2
 			const d = Math.hypot(ex - cx, ey - cy)
@@ -994,6 +1073,9 @@ export class GameWorld {
 				)
 			)
 		}
+		// Passive items react to the kill last (an explosive relic may chain into more kills — the
+		// shockwave/resolveHits health guards keep a chain from re-banking an already-dead enemy).
+		this.itemsOnKill(enemy)
 	}
 
 	// Bullet → enemy hits. Snapshot both pools first: delete() swaps the store arrays
@@ -1011,6 +1093,7 @@ export class GameWorld {
 				left: projectile.pos.x - projectile.width / 2
 			}
 			for (const enemy of foes) {
+				if (enemy.health <= 0) continue // killed earlier this frame (e.g. an item chain) — skip
 				const enemyRect = {
 					width: enemy.width,
 					height: enemy.height,
@@ -1033,6 +1116,7 @@ export class GameWorld {
 						)
 					}
 					if (enemy.hit(dmg)) this.onEnemyKilled(enemy)
+					else this.itemsOnHit(enemy, dmg) // a survivor was struck (items may react)
 					this.tryLifeSteal() // a connecting bolt may heal (Life Steal stat)
 					projectilesStore.delete(projectile)
 					break
@@ -1066,6 +1150,7 @@ export class GameWorld {
 		playerHp.set(hp)
 		this.invuln = this.invulnSteps
 		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
+		this.itemsOnDamaged(dealt) // reactive items (thorns) fire on a real HP loss
 		if (hp <= 0) gameOver()
 	}
 
@@ -1280,6 +1365,7 @@ export class GameWorld {
 			this.powerMilestoneDone = false
 			this.shopOpen = false
 			this.shopOffers = []
+			this.itemOffers = []
 			this.shockRings.length = 0
 			keys.power = false
 			this.spawnTimer = 0
@@ -1398,6 +1484,7 @@ export class GameWorld {
 				if (playing) {
 					this.updatePower()
 					this.resolveSlamLanding()
+					this.itemsTick(STEP_DELTA) // passive items advance (drones move + fire) each step
 				}
 				// Auto-attack: each weapon aims from its own muzzle and fires on its own cadence.
 				this.playerCombat(playing)
@@ -1455,6 +1542,8 @@ export class GameWorld {
 		}
 		// Shield bubble over the player (only in an active run, so idle shows none).
 		if (playing) this.drawShield(alpha)
+		// Passive items with a visual (drones) draw over the player.
+		if (playing) this.itemsDraw(alpha)
 		// Snapshot: Effect.draw() self-removes from the live pool when its animation ends.
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
 		// Nova / slam blast rings, over everything (age out even if the run just ended).
