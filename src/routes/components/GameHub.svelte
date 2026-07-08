@@ -1,8 +1,10 @@
 <script lang="ts">
 	import Button from './Button.svelte'
-	import { gameStatus, startRun, stopRun } from '$lib/game'
+	import { gameStatus, startRun, pauseGame } from '$lib/game'
 
-	const toggle = () => ($gameStatus === 'playing' ? stopRun() : startRun())
+	// While playing, the button pauses (opens the Continue/Quit modal — same as Escape)
+	// rather than stopping outright; from idle it starts a run.
+	const toggle = () => ($gameStatus === 'playing' ? pauseGame() : startRun())
 </script>
 
 <!--
@@ -23,15 +25,16 @@
 			</div>
 			<div class="text-xs tracking-widest uppercase">Fire — automatic</div>
 		</div>
-	{/if}
 
 	<button
 		data-colliding
 		data-spawn
 		onclick={toggle}
-		aria-label={$gameStatus === 'playing' ? 'Stop the game' : 'Start the game'}
+		aria-label={$gameStatus === 'playing' ? 'Pause the game' : 'Start the game'}
 	>
-		<Button text={$gameStatus === 'playing' ? 'STOP' : 'START'} classes="uppercase" />
+		<!-- Fixed width so the pedestal (data-spawn platform) stays a constant size whether
+		     it reads START or STOP, and a little wider than the label needs. -->
+		<Button text={$gameStatus === 'playing' ? 'STOP' : 'START'} classes="uppercase w-36" />
 	</button>
 </div>
 

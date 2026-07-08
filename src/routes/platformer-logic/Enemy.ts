@@ -78,6 +78,7 @@ export class Enemy {
 	turretTimer = 0
 	turretDir = 0 // cannon facing / roll direction (+1 right, −1 left; 0 = uninitialised)
 	turretTargetX = 0
+	perched = false // a wall-flush turret: never rolls (so it can't fall off its perch), just aims/fires inward
 	attackAnim = 0 // frames left showing a gadget's 'attack' animation (drone bomb-drop)
 
 	constructor(
@@ -232,15 +233,22 @@ export class Enemy {
 	// Advances toward the interior in jerky steps and sometimes turns around. It never
 	// fires while moving — hostile output only ever happens from a dead stop.
 	#updateTurret(canvas: HTMLCanvasElement, platforms: Platform[], deltaTime: number) {
-		// Lazy init: face into the map from whichever side it rolled in on.
+		// Lazy init: face into the map from whichever side it spawned on. A perched turret
+		// (wall-flush, on an edge ledge) never rolls — it holds its spot and only aims/fires,
+		// so it can't trundle off and fall.
 		if (this.turretDir === 0) {
 			this.turretDir = this.pos.x < canvas.width / 2 ? 1 : -1
 			this.direction = this.turretDir < 0 ? 'left' : 'right'
-			this.turretState = 'roll'
-			this.#setTurretRollTarget(canvas)
+			if (this.perched) {
+				this.turretState = 'aim'
+				this.turretTimer = TURRET_AIM_STEPS
+			} else {
+				this.turretState = 'roll'
+				this.#setTurretRollTarget(canvas)
+			}
 		}
 
-		if (this.turretState === 'roll') {
+		if (!this.perched && this.turretState === 'roll') {
 			this.#setAnim('walk')
 			const dx = this.turretTargetX - this.pos.x
 			const step = Math.sign(dx) * TURRET_ROLL_SPEED * deltaTime
@@ -271,11 +279,17 @@ export class Enemy {
 				this.turretTimer = TURRET_FIRE_STEPS
 			}
 		} else {
-			// Hold on the recoil frames, then trundle the next jerky step.
+			// Hold on the recoil frames, then trundle the next jerky step — or, if perched,
+			// just re-arm in place for the next burst.
 			this.#setAnim('attack')
 			if (--this.turretTimer <= 0) {
-				this.turretState = 'roll'
-				this.#setTurretRollTarget(canvas)
+				if (this.perched) {
+					this.turretState = 'aim'
+					this.turretTimer = TURRET_AIM_STEPS
+				} else {
+					this.turretState = 'roll'
+					this.#setTurretRollTarget(canvas)
+				}
 			}
 		}
 

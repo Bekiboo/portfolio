@@ -25,11 +25,23 @@ Idées de polish / feel à explorer (à trier ensemble) :
   `GameWorld.damagePlayer` (couvre contact/tirs/bombes). Bonus `bulwark` (+1 charge, cap 4)
   & `recharge` (+20% vitesse, plancher 3s). Idées suivantes : reflet de projectile, charge
   qui explose en dégâts de zone au break.
+- [x] **Repos entre vagues + arène procédurale** : la phase de combat dure un temps borné
+  (30s V1, +10s/vague, plafond 60s — `waveDuration`), puis **intermission** : le terrain est
+  vidé (ennemis/tirs/bombes), gems/soins conservés pour le mop-up. Le joueur doit **revenir
+  sur le pédestal** (bouton Start, `atSpawn` = overlap horizontal + pieds près du haut) où un
+  **glow d'appel** pulse ; il doit **tenir la position `SPAWN_DWELL_MS` (1,5s)** — barre de
+  charge dans le prompt, glow qui s'intensifie. Pendant le maintien, l'**ancien layout se
+  fond (renderAlpha 1→0) et le nouveau apparaît (0→1)** ; à la fin, **flash** (`SPAWN_FLASH_MS`)
+  et la vague suivante démarre sur les nouvelles ledges (`buildLayout`, `Platform.visible`).
+  Consts tunables : `SPAWN_DWELL_MS`, `SPAWN_FLASH_MS`, nombre/placement des ledges.
 - [ ] Feedback de tir (recul, muzzle flash, screenshake léger).
 - [ ] Feedback d'impact / de mort plus lisible.
 - [ ] Feel du déplacement (accel/decel, coyote time, saut).
 - [ ] Lisibilité (contraste ennemis/CV, télégraphes d'attaque).
 - [ ] Audio / juice.
+
+> Analyse à part : extraire la logique en **jeu navigateur autonome** (plateformes réelles,
+> caméra, scrolling, scalabilité JS) → voir [`EXTRACTION.md`](./EXTRACTION.md).
 
 ## Parké : le système multi-perso (à reprendre plus tard)
 

@@ -13,6 +13,7 @@ export const BASE_SPEED = 5 // player move speed
 export const BASE_SPREAD = 0.07 // base weapon inaccuracy (radians of random deviation per bolt)
 export const BASE_PROJECTILE_SPEED = 8 // bolt travel speed at lvl 1 (slow; Velocity raises it)
 export const BASE_JUMP = 8 // jump velocity at lvl 1 (Spring raises it)
+export const BASE_ATTACK_RANGE = 400 // px: enemies must be this close before the player opens fire (bolts still fly full distance; Optique raises it)
 export const BASE_SHIELD_MAX = 1 // shield charges when full (each absorbs one hit)
 export const BASE_SHIELD_REGEN = 480 // steps to regen one shield charge (~8s at 60Hz)
 export const MAX_SHIELD_MAX = 4 // hard cap on shield charges
@@ -21,6 +22,8 @@ export const MAX_MAGNET = 200 // hard cap on pickup radius
 export const MAX_PROJECTILES = 6 // hard cap on Multi-Shot
 export const MAX_PROJECTILE_SPEED = 16 // hard cap on bolt speed
 export const MAX_JUMP = 13 // hard cap on jump velocity
+export const MAX_ATTACK_RANGE = 820 // hard cap on the engagement range
+export const RANGE_STEP = 90 // px added per Optique pick
 export const MIN_FIRE_STEPS = 6 // hard floor on the fire cadence
 export const MIN_SPREAD = 0.01 // hard floor on inaccuracy (Focus can't go below this)
 export const REGEN_PER_STACK = 1 / 300 // one Regen stack = +1 HP / 5s (300 physics steps at 60Hz)
@@ -47,6 +50,10 @@ export const UPGRADES: Upgrade[] = [
 	{ id: 'velocity', name: 'Velocity', desc: 'Projectiles plus rapides (+2)', kind: 'atk',
 		apply: (w) => (w.player.projectileSpeed = Math.min(MAX_PROJECTILE_SPEED, w.player.projectileSpeed + 2)),
 		available: (w) => w.player.projectileSpeed < MAX_PROJECTILE_SPEED, weight: () => 3 },
+	// Engagement range: the player opens fire on enemies farther out (bolts already fly full distance).
+	{ id: 'scope', name: 'Optique', desc: "Ouvre le feu de plus loin (+90)", kind: 'atk',
+		apply: (w) => (w.attackRange = Math.min(MAX_ATTACK_RANGE, w.attackRange + RANGE_STEP)),
+		available: (w) => w.attackRange < MAX_ATTACK_RANGE, weight: () => 2 },
 	{ id: 'multi', name: 'Multi-Shot', desc: '+1 projectile (mais disperse plus)', kind: 'atk',
 		apply: (w) => w.player.projectileCount++,
 		available: (w) => w.player.projectileCount < MAX_PROJECTILES,

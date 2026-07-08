@@ -17,7 +17,19 @@ import {
 } from '$lib/stores'
 import { collision } from './utils'
 import { keys } from './controller'
-import { gameStatus, score, playerHp, maxHp, wave, addXp, gameOver, stopRun } from '$lib/game'
+import {
+	gameStatus,
+	score,
+	playerHp,
+	maxHp,
+	wave,
+	addXp,
+	gameOver,
+	stopRun,
+	paused as pausedStore,
+	pauseGame,
+	resumeGame
+} from '$lib/game'
 import {
 	waveDuration,
 	waveDef,
@@ -27,7 +39,7 @@ import {
 	waveEnemyHealth,
 	waveContactDamage
 } from './waves'
-import { drawHud, drawWaveBanner, WAVE_BANNER_MS } from './hud'
+import { drawHud, drawWaveBanner, drawIntermissionPrompt, WAVE_BANNER_MS } from './hud'
 import { nearestEnemy } from './los'
 import {
 	rollChoices,
@@ -35,6 +47,7 @@ import {
 	BASE_INVULN,
 	BASE_MAGNET,
 	BASE_JUMP,
+	BASE_ATTACK_RANGE,
 	BASE_SHIELD_MAX,
 	BASE_SHIELD_REGEN,
 	BASE_REROLLS,
@@ -49,6 +62,9 @@ const FIXED_STEP = 1000 / 60 // physics tick length (ms)
 const STEP_DELTA = FIXED_STEP / 12 // delta unit expected by the entities
 const MAX_FRAME_TIME = 100 // clamp accumulated time to avoid a spiral after the tab was hidden
 const SHIELD_FLASH_STEPS = 12 // steps the shield break/absorb ring is drawn
+const SPAWN_DWELL_MS = 1500 // how long the player must hold the spawn pedestal to launch the next wave
+const SPAWN_FLASH_MS = 260 // spawn burst when the hold completes and the wave triggers
+const INTERMISSION_MAGNET_MUL = 10 // pickup-radius boost during the rest so leftover gems get swept in
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -68,9 +84,17 @@ export class GameWorld {
 
 	// Platforms are derived from DOM elements; they only move on scroll/resize, so
 	// cache them and recompute lazily instead of every frame (avoids layout thrash).
+	// collectPlatforms() merges these DOM platforms with the procedural arena ledges below.
 	private platforms: Platform[] = []
 	private platformsDirty = true
 	private canvasDirty = true
+	// Procedural arena ledges: a fresh random layout is generated each wave (a new set at
+	// run start and at every intermission), giving the player extra terrain that changes
+	// every wave. Merged into `platforms` by collectPlatforms(); rendered (visible=true).
+	private proceduralPlatforms: Platform[] = []
+	// The next wave's ledges, pre-built at intermission and faded in (render-only, not yet
+	// collidable) as the old set fades out over the spawn dwell; promoted on hold-complete.
+	private pendingPlatforms: Platform[] = []
 
 	// Auto-attack: the player fires at the nearest enemy on this cadence while a run
 	// is active. No mouse — the pointer stays free to read/scroll the CV.
@@ -81,6 +105,7 @@ export class GameWorld {
 	fireSteps = BASE_FIRE_STEPS
 	invulnSteps = BASE_INVULN
 	magnetRadius = BASE_MAGNET
+	attackRange = BASE_ATTACK_RANGE // how close an enemy must be before the player opens fire (Optique raises it)
 	xpMul = 1 // XP banked per gem
 	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
 	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
@@ -108,9 +133,15 @@ export class GameWorld {
 	private invuln = 0
 	private wasPlaying = false
 	private dimAlpha = 0 // eased screen-dim while playing (focus mode)
-	private waveTimer = 0 // ms elapsed in the current wave
+	private waveTimer = 0 // ms elapsed in the current wave's combat phase
 	private waveBanner = 0 // ms remaining on the current banner
 	private waveBannerLabel = '' // theme name shown on the current banner
+	// Rest phase between waves: the field is cleared and the player must walk back to the
+	// spawn pedestal and hold to trigger the next wave. No combat/spawns while this is true.
+	private intermission = false
+	private promptTick = 0 // drives the pulsing "return to spawn" prompt
+	private spawnDwell = 0 // ms held on the spawn pedestal this intermission (0 → SPAWN_DWELL_MS)
+	private spawnFlash = 0 // ms remaining on the spawn burst when a wave launches
 
 	// --- Lifecycle -----------------------------------------------------------
 	mount(canvas: HTMLCanvasElement) {
@@ -144,9 +175,18 @@ export class GameWorld {
 			else if (e.code === 'KeyR') this.reroll()
 			return
 		}
-		// Escape bails out of a run / dismisses game-over; everything else is movement.
+		// Pause menu open: Escape resumes; movement keys are swallowed so they don't leak
+		// into the frozen sim (the Continue/Quit buttons handle the rest).
+		if (get(pausedStore)) {
+			if (e.code === 'Escape') resumeGame()
+			return
+		}
+		// Escape pauses an active run (Continue/Quit modal) and dismisses game-over;
+		// everything else is movement.
 		if (e.code === 'Escape') {
-			if (get(gameStatus) !== 'idle') stopRun()
+			const st = get(gameStatus)
+			if (st === 'playing') pauseGame()
+			else if (st === 'over') stopRun()
 			return
 		}
 		keys.onkeydown(e, this.player)
@@ -173,9 +213,165 @@ export class GameWorld {
 		this.platforms = []
 		for (let i = 0; i < collidingElements.length; i++) {
 			const el = collidingElements[i].getBoundingClientRect()
-			this.platforms.push(new Platform(el.width, el.height, el.y, el.x))
+			this.platforms.push(new Platform(el.width, el.height, el.y, el.x)) // DOM: invisible
 		}
+		for (const p of this.proceduralPlatforms) this.platforms.push(p) // arena: visible ledges
 		this.platformsDirty = false
+	}
+
+	// Roll a fresh set of arena ledges for the next wave — a new layout every wave, but with
+	// deliberate structure rather than scattered noise: two wall-flush perch ledges (enemy
+	// spawn points, e.g. a perched turret firing inward) plus interior ledges laid out on a
+	// regular column grid so spacing reads as designed. All marked visible so Platform.draw()
+	// renders them. Returns the set; the caller decides if it's the live or pending layout.
+	private buildLayout(): Platform[] {
+		const W = this.canvas.width
+		const H = this.canvas.height
+		const thick = 20
+		const ledges: Platform[] = []
+
+		// Wall-flush perches: one on each side, at a jittered mid height. Flush to the edge
+		// so an enemy can ride in on the wall and hold it (the spawn director perches turrets
+		// here).
+		const perchW = Math.min(140, W * 0.14)
+		const perchY = () => H * (0.4 + Math.random() * 0.26)
+		const left = new Platform(perchW, thick, perchY(), 0)
+		left.visible = true
+		left.edge = 'left'
+		const right = new Platform(perchW, thick, perchY(), W - perchW)
+		right.visible = true
+		right.edge = 'right'
+		ledges.push(left, right)
+
+		// Interior ledges on a regular column grid: one per column, each centred in its
+		// column with a little horizontal jitter and a varied height, so the field is evenly
+		// spaced without looking mechanical.
+		const cols = 3 + Math.floor(Math.random() * 2) // 3–4 interior ledges
+		const usableL = W * 0.18
+		const usableR = W * 0.82
+		const colW = (usableR - usableL) / cols
+		const bandTop = H * 0.36
+		const bandBot = H * 0.74
+		for (let i = 0; i < cols; i++) {
+			const w = 100 + Math.random() * 80
+			const slack = Math.max(0, colW - w - 24)
+			const colLeft = usableL + i * colW + 12 + Math.random() * slack
+			const top = bandTop + Math.random() * (bandBot - bandTop)
+			const ledge = new Platform(w, thick, top, colLeft)
+			ledge.visible = true
+			ledges.push(ledge)
+		}
+		return ledges
+	}
+
+	// Combat timer expired: enter the rest phase. Clear the threat (enemies + their bombs
+	// and bolts) for a true breather — but keep gems/health packs so the player can mop up
+	// on the walk back. Pre-build the next arena; it stays render-only at alpha 0 until the
+	// player holds the pedestal, then fades in as the old set fades out.
+	private enterIntermission() {
+		this.intermission = true
+		this.spawnDwell = 0
+		for (const e of enemiesStore.list)
+			effectsStore.add(new Effect({ x: e.pos.x, y: e.pos.y }, 'smoke_12'))
+		enemiesStore.clear()
+		projectilesStore.clear()
+		bombsStore.clear()
+		this.pendingPlatforms = this.buildLayout()
+		for (const p of this.pendingPlatforms) p.renderAlpha = 0
+	}
+
+	// The hold completed: promote the pre-built arena to the live (collidable) layout, fire
+	// the spawn burst, and start the next wave.
+	private startNextWave() {
+		this.intermission = false
+		this.spawnDwell = 0
+		this.spawnFlash = SPAWN_FLASH_MS
+		for (const p of this.pendingPlatforms) p.renderAlpha = 1
+		this.proceduralPlatforms = this.pendingPlatforms
+		this.pendingPlatforms = []
+		this.platformsDirty = true // fold the new ledges into `platforms` next frame
+		this.waveTimer = 0
+		this.spawnTimer = 0
+		wave.update((w) => w + 1)
+		const def = waveDef(get(wave))
+		this.waveBanner = WAVE_BANNER_MS
+		this.waveBannerLabel = def.label
+		// A themed wave can open with an elite (slow bullet-sponge) spawned as it begins.
+		if (def.eliteAtStart) this.spawnEnemy(def.eliteAtStart)
+	}
+
+	// Advance the rest phase: accumulate/reset the pedestal hold, crossfade the old arena
+	// out and the new one in by the hold progress, and launch the wave once the hold fills.
+	private updateIntermission(frameTime: number) {
+		this.promptTick++
+		if (this.atSpawn()) this.spawnDwell = Math.min(SPAWN_DWELL_MS, this.spawnDwell + frameTime)
+		else this.spawnDwell = 0
+		const p = this.spawnDwell / SPAWN_DWELL_MS // 0 → 1 hold progress
+		for (const pf of this.proceduralPlatforms) pf.renderAlpha = 1 - p
+		for (const pf of this.pendingPlatforms) pf.renderAlpha = p
+		if (this.spawnDwell >= SPAWN_DWELL_MS) this.startNextWave()
+	}
+
+	// Is the player standing on the spawn pedestal ([data-spawn], the Start/Stop button)?
+	// Requires both horizontal overlap and feet near the button top, so the player can't
+	// charge the hold from an arena ledge floating above it.
+	private atSpawn() {
+		const spawnEl = document.querySelector('[data-spawn]')
+		if (!spawnEl) return true // no pedestal in the DOM → don't soft-lock the run
+		const r = spawnEl.getBoundingClientRect()
+		const px = this.player.pos.x + this.player.width / 2
+		const feet = this.player.pos.y + this.player.height
+		const nearX = px > r.x - 40 && px < r.x + r.width + 40
+		const nearY = feet > r.top - 90 && feet < r.top + 30
+		return nearX && nearY
+	}
+
+	// Pulsing "come here" glow over the spawn pedestal during the rest, tightening and
+	// brightening as the hold charges. Drawn on the canvas so it sits on the focus veil.
+	private drawSpawnGlow() {
+		const spawnEl = document.querySelector('[data-spawn]')
+		if (!spawnEl) return
+		const r = spawnEl.getBoundingClientRect()
+		const cx = r.x + r.width / 2
+		const cy = r.y + r.height / 2
+		const p = this.spawnDwell / SPAWN_DWELL_MS
+		const pulse = 0.5 + 0.5 * Math.sin(this.promptTick * 0.12)
+		const intensity = 0.35 + 0.65 * p // dim call-to-action → full charge
+		const base = Math.max(r.width, r.height)
+		const radius = base * (1.5 + 0.7 * pulse * (1 - p) + 1.3 * p)
+		this.ctx.save()
+		const g = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
+		g.addColorStop(0, `rgba(103, 232, 249, ${0.55 * intensity})`) // cyan-300 core
+		g.addColorStop(0.5, `rgba(56, 189, 248, ${0.28 * intensity})`) // sky-400
+		g.addColorStop(1, 'rgba(56, 189, 248, 0)')
+		this.ctx.fillStyle = g
+		this.ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2)
+		this.ctx.restore()
+	}
+
+	// Bright expanding burst over the pedestal at the instant the hold completes.
+	private drawSpawnFlash() {
+		const spawnEl = document.querySelector('[data-spawn]')
+		if (!spawnEl) return
+		const r = spawnEl.getBoundingClientRect()
+		const cx = r.x + r.width / 2
+		const cy = r.y + r.height / 2
+		const t = this.spawnFlash / SPAWN_FLASH_MS // 1 → 0
+		const base = Math.max(r.width, r.height)
+		const radius = base * (0.6 + (1 - t) * 2.6)
+		this.ctx.save()
+		this.ctx.globalAlpha = t
+		const g = this.ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
+		g.addColorStop(0, `rgba(224, 242, 254, ${0.5 * t})`) // sky-100 core
+		g.addColorStop(1, 'rgba(224, 242, 254, 0)')
+		this.ctx.fillStyle = g
+		this.ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2)
+		this.ctx.strokeStyle = '#e0f2fe' // sky-100 ring
+		this.ctx.lineWidth = 3
+		this.ctx.beginPath()
+		this.ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+		this.ctx.stroke()
+		this.ctx.restore()
 	}
 
 	private spawnPlayerOnPedestal() {
@@ -202,6 +398,7 @@ export class GameWorld {
 		this.fireSteps = c.fireSteps
 		this.invulnSteps = BASE_INVULN
 		this.magnetRadius = BASE_MAGNET
+		this.attackRange = BASE_ATTACK_RANGE
 		this.xpMul = 1
 		this.regenPerStep = 0
 		this.regenAccum = 0
@@ -260,9 +457,38 @@ export class GameWorld {
 	}
 
 	// --- Spawn director -------------------------------------------------------
+	// A wall-flush perch ledge with no turret currently riding it (so two turrets don't
+	// stack on the same edge). null if every perch is taken or the layout has none.
+	private freeEdgePerch(): Platform | null {
+		const perches = this.proceduralPlatforms.filter((p) => p.edge)
+		const free = perches.filter(
+			(p) =>
+				!enemiesStore.list.some(
+					(e) => e.perched && e.pos.x + e.width / 2 >= p.left && e.pos.x + e.width / 2 <= p.left + p.width
+				)
+		)
+		return free.length ? free[Math.floor(Math.random() * free.length)] : null
+	}
+
 	private spawnEnemy(kind: EnemyKind) {
 		const w = get(wave)
 		const t = ENEMY_TYPES[kind]
+		// Turrets ride a wall-flush perch when one is free: dropped onto the edge ledge, they
+		// can't fall and just fire inward (perched behaviour in Enemy.#updateTurret). With no
+		// free perch they fall back to the rolling floor turret below.
+		if (kind === 'turret') {
+			const perch = this.freeEdgePerch()
+			if (perch) {
+				const px = perch.edge === 'left' ? perch.left : perch.left + perch.width - t.width
+				const enemy = new Enemy(
+					{ x: px, y: perch.top - t.height },
+					{ kind, speed: 0, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
+				)
+				enemy.perched = true
+				enemiesStore.add(enemy)
+				return
+			}
+		}
 		// Alternate the side each enemy walks/flies in from.
 		const fromLeft = this.spawnSide++ % 2 === 0
 		// 'onscreen' kinds (the anchored turret) deploy in view; the rest enter from
@@ -615,6 +841,12 @@ export class GameWorld {
 			this.spawnTimer = 0
 			this.invuln = 0
 			this.waveTimer = 0
+			this.intermission = false
+			this.spawnDwell = 0
+			this.spawnFlash = 0
+			this.pendingPlatforms = []
+			this.proceduralPlatforms = this.buildLayout() // fresh arena for wave 1
+			this.platformsDirty = true
 			// Open on the wave-1 theme banner so the first encounter is announced too.
 			this.waveBanner = WAVE_BANNER_MS
 			this.waveBannerLabel = waveDef(get(wave)).label
@@ -626,27 +858,30 @@ export class GameWorld {
 			this.levelUpOpen = false
 			this.pendingLevelUps = 0
 		}
-		// Level-up pause: the sim freezes but the field is preserved (not cleared).
-		const paused = this.levelUpOpen
+		// Sim freeze (field preserved, not cleared): either a level-up pick or the pause menu.
+		const paused = this.levelUpOpen || get(pausedStore)
 
 		// Advance the wave on a timer, then spawn enemies at the current wave's rate/
 		// cap. Frozen while a pick is open; the field is cleared once truly stopped.
 		if (playing && !paused) {
-			this.waveTimer += frameTime
-			if (this.waveTimer >= waveDuration(get(wave))) {
-				this.waveTimer -= waveDuration(get(wave))
-				wave.update((w) => w + 1)
-				const def = waveDef(get(wave))
-				this.waveBanner = WAVE_BANNER_MS
-				this.waveBannerLabel = def.label
-				// A themed wave can open with an elite: a slow bullet-sponge that drops a
-				// fat gem and rewards focus fire, spawned once as the wave begins.
-				if (def.eliteAtStart) this.spawnEnemy(def.eliteAtStart)
-			}
-			this.spawnTimer += frameTime
-			if (this.spawnTimer >= waveSpawnInterval(get(wave))) {
-				this.spawnFromBudget()
-				this.spawnTimer = 0
+			if (this.intermission) {
+				// Rest phase: no spawns, no timer. The next wave starts once the player has
+				// walked back to the pedestal and held it for SPAWN_DWELL_MS (crossfading the
+				// arena layout meanwhile).
+				this.updateIntermission(frameTime)
+			} else {
+				this.waveTimer += frameTime
+				if (this.waveTimer >= waveDuration(get(wave))) {
+					// Combat over: clear the field, spawn a new arena, and wait for the
+					// player to return to spawn (startNextWave advances the wave counter).
+					this.enterIntermission()
+				} else {
+					this.spawnTimer += frameTime
+					if (this.spawnTimer >= waveSpawnInterval(get(wave))) {
+						this.spawnFromBudget()
+						this.spawnTimer = 0
+					}
+				}
 			}
 		} else if (!playing) {
 			if (enemiesStore.list.length) enemiesStore.clear()
@@ -656,6 +891,16 @@ export class GameWorld {
 			if (healthPacksStore.list.length) healthPacksStore.clear()
 			this.invuln = 0
 			this.waveBanner = 0
+			// Drop the arena ledges so the idle/home screen shows none (they're re-rolled
+			// on the next run start).
+			if (this.proceduralPlatforms.length || this.pendingPlatforms.length) {
+				this.proceduralPlatforms = []
+				this.pendingPlatforms = []
+				this.platformsDirty = true
+			}
+			this.intermission = false
+			this.spawnDwell = 0
+			this.spawnFlash = 0
 		}
 
 		// Advance physics in fixed steps, consuming the elapsed real time. A level-up
@@ -670,11 +915,14 @@ export class GameWorld {
 				projectilesStore.list
 					.slice()
 					.forEach((projectile) => projectile.update(STEP_DELTA, this.platforms))
+				// During the between-wave rest, boost the pickup radius so leftover gems sweep
+				// in on the walk back to spawn; it reverts the moment the next wave starts.
+				const magnet = this.intermission
+					? this.magnetRadius * INTERMISSION_MAGNET_MUL
+					: this.magnetRadius
 				xpGemsStore.list
 					.slice()
-					.forEach((gem) =>
-						gem.update(this.canvas, this.player, this.platforms, STEP_DELTA, this.magnetRadius)
-					)
+					.forEach((gem) => gem.update(this.canvas, this.player, this.platforms, STEP_DELTA, magnet))
 				if (playing)
 					enemiesStore.list.forEach((enemy) =>
 						enemy.update(this.canvas, this.player, this.platforms, STEP_DELTA, enemiesStore.list)
@@ -689,7 +937,7 @@ export class GameWorld {
 						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
 				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
 				// Auto-attack: aim at the nearest enemy and fire on a cadence while playing.
-				const target = playing ? nearestEnemy(this.player, this.platforms) : null
+				const target = playing ? nearestEnemy(this.player, this.platforms, this.attackRange) : null
 				this.player.aimAt(target)
 				if (playing) {
 					if (target) {
@@ -725,10 +973,18 @@ export class GameWorld {
 			this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
 			// Keep the interactive platforms (section titles, buttons) at full
 			// brightness by punching the veil out over their rects — only the
-			// surrounding CV dims.
-			for (const p of this.platforms) this.ctx.clearRect(p.left, p.top, p.width, p.height)
+			// surrounding CV dims. Skip the procedural ledges: there's no CV under them,
+			// so clearing would show a bright hole instead — they draw over the veil.
+			for (const p of this.platforms)
+				if (!p.visible) this.ctx.clearRect(p.left, p.top, p.width, p.height)
 		}
 		for (const platform of this.platforms) platform.draw(this.ctx)
+		// The next wave's ledges fade in over the hold (render-only until promoted).
+		if (playing && this.intermission)
+			for (const pf of this.pendingPlatforms) pf.draw(this.ctx)
+		// Spawn pedestal call-to-action glow during the rest, and the launch burst after.
+		if (playing && this.intermission) this.drawSpawnGlow()
+		if (playing && this.spawnFlash > 0) this.drawSpawnFlash()
 		xpGemsStore.list.forEach((gem) => gem.draw(this.ctx, alpha))
 		healthPacksStore.list.forEach((pack) => pack.draw(this.ctx, alpha))
 		enemiesStore.list.forEach((enemy) => enemy.draw(this.ctx, animDelta, alpha))
@@ -747,8 +1003,18 @@ export class GameWorld {
 			drawHud(this.ctx, this.canvas)
 			if (this.waveBanner > 0)
 				drawWaveBanner(this.ctx, this.canvas, this.waveBanner, this.waveBannerLabel)
+			// During the rest phase, prompt the player to walk back to spawn (pulsing), and
+			// show the hold-charge bar once they're on the pedestal.
+			if (this.intermission)
+				drawIntermissionPrompt(
+					this.ctx,
+					this.canvas,
+					0.5 + 0.5 * Math.sin(this.promptTick * 0.08),
+					this.spawnDwell / SPAWN_DWELL_MS
+				)
 		}
 		if (this.waveBanner > 0) this.waveBanner -= frameTime
+		if (this.spawnFlash > 0) this.spawnFlash -= frameTime
 
 		this.rafId = requestAnimationFrame(this.animate)
 	}

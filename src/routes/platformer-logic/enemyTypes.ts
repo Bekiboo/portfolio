@@ -58,9 +58,10 @@ export interface EnemyType {
 }
 
 export const ENEMY_TYPES: Record<EnemyKind, EnemyType> = {
-	// Numerous close-range fodder — the plain baseline.
+	// Numerous close-range fodder — the plain baseline. Slow shamblers (low waveSpeedMul):
+	// pressure comes from their numbers, not their footspeed.
 	biker: {
-		health: 3, speed: 2.4, waveSpeedMul: 1.0, damage: 1, contactBase: 1, xp: 1,
+		health: 2, speed: 2.4, waveSpeedMul: 0.8, damage: 1, contactBase: 1, xp: 1,
 		width: 48, height: 80, spriteScale: 2, sprite: 'biker',
 		behavior: 'ground', gravity: true, patrol: false, separates: true, separatesVertically: false,
 		spawnX: 'side', spawnY: 'floor', cullable: true, medkitDrop: 0.05

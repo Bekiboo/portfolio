@@ -88,3 +88,43 @@ export const drawWaveBanner = (
 	}
 	ctx.restore()
 }
+
+// Persistent rest-phase prompt: shown while a wave is cleared and the player must walk
+// back to the spawn pedestal and hold position. `pulse` (0→1) breathes the call to action;
+// `progress` (0→1) is the dwell charge — once it's non-zero we swap the copy to "hold" and
+// draw a charging bar so the 1.5s hold reads clearly.
+export const drawIntermissionPrompt = (
+	ctx: CanvasRenderingContext2D,
+	canvas: HTMLCanvasElement,
+	pulse: number,
+	progress: number
+) => {
+	ctx.save()
+	ctx.textAlign = 'center'
+	ctx.textBaseline = 'middle'
+	const cx = canvas.width / 2
+	const cy = canvas.height * 0.26
+	ctx.fillStyle = '#7dd3fc' // sky-300
+	ctx.font = '700 26px ui-monospace, monospace'
+	ctx.fillText('VAGUE TERMINÉE', cx, cy)
+	if (progress > 0) {
+		ctx.fillStyle = '#e2e8f0' // slate-200
+		ctx.font = '600 14px ui-monospace, monospace'
+		ctx.fillText('MAINTENEZ LA POSITION…', cx, cy + 28)
+		// Charging bar for the dwell.
+		const barW = 180
+		const barH = 6
+		const bx = cx - barW / 2
+		const by = cy + 44
+		ctx.fillStyle = 'rgba(15, 23, 42, 0.7)'
+		ctx.fillRect(bx, by, barW, barH)
+		ctx.fillStyle = '#67e8f9' // cyan-300
+		ctx.fillRect(bx, by, barW * Math.min(1, progress), barH)
+	} else {
+		ctx.globalAlpha = 0.55 + 0.45 * pulse
+		ctx.fillStyle = '#e2e8f0' // slate-200
+		ctx.font = '600 14px ui-monospace, monospace'
+		ctx.fillText('↩ RETOURNEZ AU DÉPART POUR CONTINUER', cx, cy + 28)
+	}
+	ctx.restore()
+}

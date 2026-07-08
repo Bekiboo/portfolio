@@ -10,9 +10,11 @@ import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
 // Design intent: gentle, legible openings (a few slow bikers) that introduce ONE new
 // threat vector at a time — flyers, then a brute, then gunfire, then chargers, turrets,
 // bombers — instead of piling every kind on at once. Ranged pressure arrives late.
-// How long each wave lasts before it steps up. The first two are short on-ramps; from
-// wave 3 they open up (30s) so each themed encounter has room to breathe.
-export const waveDuration = (w: number) => (w < 3 ? 14000 : 30000)
+// How long each wave's combat phase lasts before the rest/intermission kicks in. Waves
+// grow from 30s (wave 1) by +10s each, capped at 60s (wave 4+), so later themed encounters
+// have more room. After this timer the field clears and the player walks back to spawn to
+// trigger the next wave (GameWorld intermission).
+export const waveDuration = (w: number) => Math.min(60000, 30000 + (w - 1) * 10000)
 
 // Reference advance speed at speedMul 1.0. A wave's `speedMul` scales it, and each chase
 // kind scales again by its own `waveSpeedMul` (flyer 0.8, charger 1.05…). Stays well under
@@ -35,25 +37,25 @@ export interface WaveDef {
 // prettier-ignore — kept as a legible one-line-per-wave table (over printWidth on purpose).
 const WAVES: WaveDef[] = [
 	// A handful of slow bikers shambling in. Learn to move and shoot.
-	{ label: 'Éclaireurs', cap: 5, interval: 1300, speedMul: 0.75, ground: ['biker'] },
+	{ label: 'Éclaireurs', cap: 8, interval: 1100, speedMul: 0.75, ground: ['biker'] },
 	// First air threat: flyers home in from above.
-	{ label: 'Nuée', cap: 6, interval: 1200, speedMul: 0.8, ground: ['biker'], floors: { flyer: 2 } },
+	{ label: 'Nuée', cap: 10, interval: 1050, speedMul: 0.8, ground: ['biker'], floors: { flyer: 2 } },
 	// First heavy: a lone brute anchors the wave. Focus-fire practice.
-	{ label: 'Colosse', cap: 6, interval: 1150, speedMul: 0.85, ground: ['biker'], floors: { flyer: 1 }, eliteAtStart: 'brute' },
+	{ label: 'Colosse', cap: 9, interval: 1050, speedMul: 0.85, ground: ['biker'], floors: { flyer: 1 }, eliteAtStart: 'brute' },
 	// First gunfire: a single standoff shooter. Cover starts to matter.
-	{ label: 'Ligne de tir', cap: 8, interval: 1050, speedMul: 0.9, ground: ['biker'], floors: { shooter: 1, flyer: 1 } },
+	{ label: 'Ligne de tir', cap: 11, interval: 1000, speedMul: 0.9, ground: ['biker'], floors: { shooter: 1, flyer: 1 } },
 	// Chargers join the ground pool; the melee rush gets nervous.
-	{ label: 'Meute', cap: 9, interval: 1000, speedMul: 0.95, ground: ['biker', 'biker', 'charger'], floors: { flyer: 2 } },
+	{ label: 'Meute', cap: 13, interval: 950, speedMul: 0.95, ground: ['biker', 'biker', 'charger'], floors: { flyer: 2 } },
 	// Entrenchment: rolling turrets add a second gun line.
-	{ label: 'Enfilade', cap: 10, interval: 950, speedMul: 0.95, ground: ['biker', 'charger'], floors: { shooter: 2, turret: 1 } },
+	{ label: 'Enfilade', cap: 13, interval: 900, speedMul: 0.95, ground: ['biker', 'charger'], floors: { shooter: 2, turret: 1 } },
 	// Air raid: bombers cruise overhead dropping area blasts.
-	{ label: 'Bombardement', cap: 11, interval: 900, speedMul: 1.0, ground: ['biker', 'charger'], floors: { flyer: 2, bomber: 1 } },
+	{ label: 'Bombardement', cap: 14, interval: 850, speedMul: 1.0, ground: ['biker', 'charger'], floors: { flyer: 2, bomber: 1 } },
 	// A second brute inside a full mixed field.
-	{ label: 'Cohorte', cap: 12, interval: 850, speedMul: 1.0, ground: ['biker', 'biker', 'charger'], floors: { shooter: 1, turret: 1 }, eliteAtStart: 'brute' },
+	{ label: 'Cohorte', cap: 15, interval: 800, speedMul: 1.0, ground: ['biker', 'biker', 'charger'], floors: { shooter: 1, turret: 1 }, eliteAtStart: 'brute' },
 	// Everything at once, thinning your footing.
-	{ label: 'Déferlante', cap: 13, interval: 800, speedMul: 1.05, ground: ['biker', 'charger'], floors: { flyer: 2, shooter: 1, bomber: 1 } },
+	{ label: 'Déferlante', cap: 16, interval: 780, speedMul: 1.05, ground: ['biker', 'charger'], floors: { flyer: 2, shooter: 1, bomber: 1 } },
 	// The full storm: every vector, plus a brute.
-	{ label: 'Chaos', cap: 14, interval: 750, speedMul: 1.05, ground: ['biker', 'charger'], floors: { flyer: 1, shooter: 1, turret: 1, bomber: 1 }, eliteAtStart: 'brute' }
+	{ label: 'Chaos', cap: 17, interval: 750, speedMul: 1.05, ground: ['biker', 'charger'], floors: { flyer: 1, shooter: 1, turret: 1, bomber: 1 }, eliteAtStart: 'brute' }
 ]
 
 // The current wave's definition. Past the authored table the endless tail scales from the
@@ -64,7 +66,7 @@ export function waveDef(w: number): WaveDef {
 	const over = w - WAVES.length
 	return {
 		label: 'Survie',
-		cap: Math.min(16, 14 + Math.floor(over / 2)),
+		cap: Math.min(20, 17 + Math.floor(over / 2)),
 		interval: Math.max(620, 750 - over * 15),
 		speedMul: Math.min(1.25, 1.05 + over * 0.02),
 		ground: ['biker', 'charger'],

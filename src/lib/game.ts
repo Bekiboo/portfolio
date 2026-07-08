@@ -11,6 +11,11 @@ export const gameStatus = writable<GameStatus>('idle')
 // Convenience boolean used by the loop and layout: true only during an active run.
 export const gameStarted = derived(gameStatus, ($s) => $s === 'playing')
 
+// Pause menu: freezes the sim and shows a Continue/Quit modal. Separate from the level-up
+// pause (which forces a pick) and from a full stop — the run stays 'playing' underneath, so
+// nothing is cleared. Only ever set true while a run is active.
+export const paused = writable(false)
+
 // Per-run state, reset by startRun().
 export const MAX_HP = 10 // base HP cap (shown as a gauge); Vitality raises the current cap
 export const maxHp = writable(MAX_HP) // current HP cap (grows with Vitality)
@@ -66,15 +71,28 @@ export function startRun() {
 	level.set(1)
 	levelXp.set(0)
 	levelXpNeeded.set(levelReq(1))
+	paused.set(false)
 	gameStatus.set('playing')
+}
+
+/** Open the pause menu (freezes the run). No-op unless a run is active. */
+export function pauseGame() {
+	if (get(gameStatus) === 'playing') paused.set(true)
+}
+
+/** Close the pause menu and resume the run. */
+export function resumeGame() {
+	paused.set(false)
 }
 
 /** Manual stop → back to idle. */
 export function stopRun() {
+	paused.set(false)
 	gameStatus.set('idle')
 }
 
 /** Player died → game-over screen (score/HP kept for display). */
 export function gameOver() {
+	paused.set(false)
 	gameStatus.set('over')
 }

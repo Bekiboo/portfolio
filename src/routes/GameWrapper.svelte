@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte'
 	import { GameWorld } from './platformer-logic/GameWorld.svelte'
-	import { gameStatus, score, wave, xp, level, startRun, stopRun } from '$lib/game'
+	import {
+		gameStatus,
+		score,
+		wave,
+		xp,
+		level,
+		startRun,
+		stopRun,
+		paused,
+		resumeGame
+	} from '$lib/game'
 	import Button from './components/Button.svelte'
 
 	// Fixed full-viewport canvas overlay (pointer-events: none) that renders the
@@ -41,6 +51,36 @@
 				>
 					Quit
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if $paused && $gameStatus === 'playing'}
+	<!-- Pause menu: same entry point as Escape. Freezes the run (nothing cleared) and offers
+	     to resume or quit. Full-screen catcher so clicks don't fall through to the hub. -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
+		<div class="pause-menu text-center">
+			<div class="font-bauhaus text-2xl font-bold tracking-widest text-slate-200">PAUSE</div>
+			<div class="mt-1 font-mono text-xs tracking-widest text-slate-400">
+				WAVE <span class="text-red-400">{$wave}</span>
+				<span class="mx-1 text-slate-600">·</span>
+				SCORE <span class="text-blue-400">{$score}</span>
+			</div>
+			<div class="mt-5 flex flex-col items-center gap-2">
+				<button onclick={resumeGame} aria-label="Resume the game">
+					<Button text="CONTINUER" classes="uppercase" />
+				</button>
+				<button
+					onclick={stopRun}
+					class="text-xs tracking-widest text-slate-500 uppercase transition hover:text-slate-300"
+					aria-label="Quit the game"
+				>
+					Quitter
+				</button>
+			</div>
+			<div class="mt-4 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+				Échap pour reprendre
 			</div>
 		</div>
 	</div>
@@ -110,6 +150,14 @@
 		border: 1px solid rgb(51 65 85); /* slate-700 */
 		border-radius: 0.6rem;
 		box-shadow: 0 10px 40px rgb(0 0 0 / 0.55);
+	}
+	.pause-menu {
+		width: min(90vw, 300px);
+		padding: 1.5rem 2rem;
+		background: rgb(15 23 42 / 0.92); /* slate-900/92 */
+		border: 1px solid rgb(51 65 85); /* slate-700 */
+		border-radius: 0.5rem;
+		box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
 	}
 	.upgrade {
 		display: flex;
