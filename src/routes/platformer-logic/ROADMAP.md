@@ -66,11 +66,10 @@ spécifique. Cinq systèmes, à construire dans cet ordre. **Décisions prises**
 1. **[x] Portails** (fait — cf. section polish ci-dessus). Indépendant des 4 autres.
 2. **[x] Refonte XP** : les gemmes **ne despawnent plus** (`XpGem` : plus de `LIFETIME`/blink —
    l'XP du run est toujours banquable, tension spatiale et non temporelle) ; **level-up = full PV**
-   (`chooseUpgrade`, appliqué *après* le pick pour que Vitality remonte au nouveau cap). Split
-   boutique **préparé** : chaque upgrade porte un `scope` (`generic` | `weapon` | `power`) et
-   `rollChoices` filtre via `WEAPON_UPGRADES_IN_XP` — flag à passer à `false` au chantier 5 pour un
-   pool XP 100% générique. Pour l'instant les upgrades d'arme (Velocity/Optique/Multi/Power/Focus)
-   **restent tirables** (sinon plus aucune progression offensive avant la boutique).
+   (`chooseUpgrade`, appliqué *après* le pick pour que PV Max remonte au nouveau cap).
+   **Pool XP = stats globales façon Brotato** (mis à jour après le chantier 5, cf. plus bas) :
+   le pool ne contient plus **que des stats de personnage génériques**, le réglage par arme/pouvoir
+   ayant migré à la boutique. Le flag intérimaire `WEAPON_UPGRADES_IN_XP` a été **retiré**.
 3. **[x] Deux armes** — fait :
    - `WEAPON_TYPES` (`weaponTypes.ts`, jumeau d'`ENEMY_TYPES`) : 4 archétypes distincts —
      `pistol` (équilibré), `rifle` (lent/longue portée/gros dégâts), `shotgun` (5 plombs cône
@@ -114,10 +113,48 @@ spécifique. Cinq systèmes, à construire dans cet ordre. **Décisions prises**
    - Polish différé : pas d'upgrades de pouvoir dans le pool XP (scope `power`, viendront à la
      boutique) ; feel à tuner (portées/cooldowns/dégâts) ; combo maintien→relâche (charge) pas encore
      câblé ; sprites/VFX dédiés (anneau canvas + puff `smoke_14` pour l'instant).
-5. **[ ] Crédits + boutique d'intermission** : nouveau drop (**caisse de crédits**, drop rare),
-   monnaie qui s'accumule ; la boutique **réutilise l'intermission** (piédestal) → overlay 3 offres
-   payantes, **spécifiques à chaque arme/pouvoir**. Agrège les upgrades des chantiers 3 & 4.
-   Option à garder en réserve : **intérêt** (bonus % sur le stock non dépensé — la tension Brotato).
+5. **[x] Crédits + boutique d'intermission** — fait :
+   - **Monnaie** : store `credits` (`game.ts`, reset par run), lue dans le HUD (`◈ N` ambre en haut
+     à droite). Nouveau drop **caisse de crédits** (`CreditCrate.ts` + `creditCratesStore`) : drop
+     **rare** (`CREDIT_DROP_CHANCE` 8%) sur mort d'ennemi, tombe au sol, **pas de magnet** (détour
+     volontaire), **ne despawne pas** (la monnaie ne se perd jamais avant la boutique). Ramassée à
+     l'overlap (`resolveCreditPickups`), y compris pendant le retour au pédestal.
+   - **La boutique réutilise l'intermission** : arriver sur le pédestal (ex-« maintien pour
+     continuer ») **ouvre la boutique** (`GameWorld.updateIntermission` → `openShop`), qui **gèle la
+     sim** (ajoutée à la condition `paused`). `SHOP_SLOTS` (3) offres payantes ; acheter paie, applique
+     et **réapprovisionne ce seul slot** (`buyOffer`, exclut les autres slots visibles). Le bouton
+     **LANCER LA VAGUE ▶** (ou Entrée/Échap, touches 1·2·3 pour acheter) démarre la vague suivante.
+   - **Offres spécifiques à chaque arme/pouvoir** : `rollShopOffers`/`buildShopCandidates`
+     (`upgrades.ts`) lient un template à une **instance** concrète — `Pistolet · Cadence +18%`,
+     `Nova · Rayon +30`… Les upgrades d'arme deviennent enfin **per-arme** (un dual-wield règle
+     chaque flingue séparément) ; les upgrades de pouvoir (Recharge/Dégâts/Rayon) se gèrent hors du
+     pool XP (dash ne voit que Recharge). Overlay `{#if world.shopOpen}` dans `GameWrapper` (accent
+     ambre, coûts, désactivé si trop cher).
+   - Note : la refonte remplace le **crossfade d'arène au maintien** (la boutique EST le nouveau rôle
+     du pédestal) ; le flash de spawn couvre le swap de layout à `startNextWave`.
+   - Polish différé / **option en réserve** : **intérêt** (bonus % sur le stock non dépensé — la
+     tension Brotato) ; reroll payant des offres ; scaler la valeur/le drop des caisses par vague ;
+     sprite dédié de caisse (dessin canvas ambre pour l'instant).
+
+### Pool XP refondu façon Brotato (post-chantier 5)
+
+Le pool d'XP est passé de « upgrades d'arme + divers » à **11 stats globales de personnage** (façon
+Brotato) — `UPGRADES` dans `upgrades.ts`, toutes `scope: 'generic'`. Le réglage par arme/pouvoir
+vit désormais **uniquement à la boutique**. Nouvelles stats + où elles agissent (`GameWorld`) :
+
+- **Dégâts** (`bonusDamage`, +1/tir), **Cadence** (`fireRateMul`, ×0.9, plancher `MIN_FIRE_MUL`),
+  **Chance de critique** (`critChance`, ×`CRIT_MULT`=2, cap `MAX_CRIT`), **Portée** (`rangeBonus`,
+  +60, cap `MAX_RANGE_BONUS`), **Vol de vie** (`lifeStealChance`, proc de soin sur tir touché) →
+  appliqués dans `playerCombat`/`resolveHits`/`tryLifeSteal`.
+- **PV Max** (store `maxHp`+soin), **Armure** (`armorReduction`, dégâts subis ×(1-r), min 1),
+  **Esquive** (`dodgeChance`, roll par coup, sans i-frames), **Régénération** (`regenPerStep`) →
+  `damagePlayer`/`applyRegen`.
+- **Vitesse** (`player.speed`), **Chance** (`luck`, ×(1+luck) sur les drops soins/crédits) →
+  `onEnemyKilled`.
+- Caps/pas centralisés en tête d'`upgrades.ts` (`MAX_CRIT/DODGE/ARMOR/LIFESTEAL/RANGE_BONUS`,
+  `MIN_FIRE_MUL`, `CRIT_MULT`). **Retirés du pool XP** (base-only désormais) : Magnet, Spring
+  (saut), Bouclier (Bulwark/Recharge), Greed — à réintégrer plus tard si besoin (boutique ou pool).
+  Polish : pas de nombres flottants de dégâts/crit (juste un burst sur crit), à tuner (pas/caps).
 
 ## Parké : le système multi-perso (à reprendre plus tard)
 

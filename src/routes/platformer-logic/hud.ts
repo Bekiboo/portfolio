@@ -1,5 +1,5 @@
 import { get } from 'svelte/store'
-import { playerHp, maxHp, wave, level, score, levelXp, levelXpNeeded } from '$lib/game'
+import { playerHp, maxHp, wave, level, score, levelXp, levelXpNeeded, credits } from '$lib/game'
 
 // Canvas HUD + wave banner. Drawn on top of the focus-mode veil so run state stays
 // legible while the page behind it dims. Reads the reactive HUD stores directly —
@@ -49,6 +49,13 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 		cx,
 		gy + gH + 18
 	)
+
+	// Credits readout (amber, shop currency) pinned top-right, clear of the centred stack.
+	ctx.textAlign = 'right'
+	ctx.font = '700 14px ui-monospace, monospace'
+	ctx.fillStyle = '#fbbf24' // amber-400
+	ctx.fillText(`◈ ${get(credits)}`, canvas.width - 16, gy + gH / 2 + 0.5)
+	ctx.textAlign = 'center'
 
 	// XP-to-next-level progress bar (emerald) — fills as gems are banked.
 	const barW = 160
@@ -163,7 +170,7 @@ export const drawIntermissionPrompt = (
 		ctx.globalAlpha = 0.55 + 0.45 * pulse
 		ctx.fillStyle = '#e2e8f0' // slate-200
 		ctx.font = '600 14px ui-monospace, monospace'
-		ctx.fillText('↩ RETOURNEZ AU DÉPART POUR CONTINUER', cx, cy + 28)
+		ctx.fillText('↩ RETOURNEZ AU DÉPART — BOUTIQUE', cx, cy + 28)
 	}
 	ctx.restore()
 }

@@ -4,6 +4,7 @@ import { Player } from './Player'
 import { Enemy } from './Enemy'
 import { XpGem } from './XpGem'
 import { HealthPack } from './HealthPack'
+import { CreditCrate } from './CreditCrate'
 import { Effect } from './Effect'
 import { Portal, type PortalPlacement } from './Portal'
 import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
@@ -15,6 +16,7 @@ import {
 	xpGemsStore,
 	bombsStore,
 	healthPacksStore,
+	creditCratesStore,
 	portalsStore
 } from '$lib/stores'
 import { collision } from './utils'
@@ -26,6 +28,7 @@ import {
 	maxHp,
 	wave,
 	level,
+	credits,
 	startingWeapon,
 	addXp,
 	gameOver,
@@ -51,6 +54,10 @@ import {
 	rollChoices,
 	weaponChoices,
 	powerChoices,
+	rollShopOffers,
+	type ShopOffer,
+	CRIT_MULT,
+	MIN_FIRE_STEPS,
 	BASE_INVULN,
 	BASE_MAGNET,
 	BASE_JUMP,
@@ -75,6 +82,9 @@ const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns c
 const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
 const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
 const POWER_MILESTONE_LEVEL = 5 // reaching this level grants a special power on the S key (another special pick)
+const SHOP_SLOTS = 3 // offers shown at the intermission shop
+const CREDIT_DROP_CHANCE = 0.08 // chance a slain enemy drops a credit crate (rare)
+const CREDIT_CRATE_VALUE = 5 // credits banked per crate
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -114,6 +124,19 @@ export class GameWorld {
 	xpMul = 1 // XP banked per gem
 	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
 	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
+
+	// --- Brotato-style global character stats (the XP-pool rewards) -----------
+	// Generic, character-wide (not per-weapon — the shop tunes individual weapons). Reset to
+	// baseline by resetUpgrades() and bumped by the level-up stat picks (upgrades.ts). Read by
+	// the combat resolution below. Max HP / Speed / Regen live in their own stores/fields above.
+	bonusDamage = 0 // flat damage added to every bolt hit
+	critChance = 0 // 0..1 chance a bolt deals CRIT_MULT× damage
+	dodgeChance = 0 // 0..1 chance to shrug off an incoming hit entirely
+	armorReduction = 0 // 0..cap fraction of incoming damage prevented (min 1 still lands)
+	lifeStealChance = 0 // 0..1 chance a damaging bolt heals 1 HP
+	rangeBonus = 0 // px added to every weapon's engagement range
+	fireRateMul = 1 // global cadence multiplier applied on top of each weapon's fireSteps (<1 = faster)
+	luck = 0 // drop-rate bonus: crate/med-kit chances scale by (1 + luck)
 	// Base shield: a bubble that soaks incoming hits. Each hit spends a charge (no HP
 	// lost) and breaks the bubble briefly; a charge regenerates every shieldRegenSteps,
 	// and any incoming damage resets that timer (no regen while under fire).
@@ -137,6 +160,13 @@ export class GameWorld {
 	private pendingLevelUps = 0
 	private weaponMilestoneDone = false // the 2nd-weapon card only ever appears once per run
 	private powerMilestoneDone = false // the power card only ever appears once per run
+
+	// --- Intermission shop (read by the Svelte template, hence reactive) ---
+	// Opens when the player reaches the pedestal during the rest; freezes the sim (added to the
+	// pause condition) and offers SHOP_SLOTS paid weapon/power upgrades. Its launch button starts
+	// the next wave. `credits` lives in game.ts (a HUD store); these just drive the overlay.
+	shopOpen = $state(false)
+	shopOffers = $state<ShopOffer[]>([])
 
 	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime and
 	// drawn over the sprites. Kept off the entity pools since they never interact.
@@ -176,6 +206,7 @@ export class GameWorld {
 		xpGemsStore.clear()
 		bombsStore.clear()
 		healthPacksStore.clear()
+		creditCratesStore.clear()
 		portalsStore.clear()
 	}
 
@@ -189,6 +220,15 @@ export class GameWorld {
 			else if (e.code === 'Digit2' || e.code === 'Numpad2') this.chooseUpgrade(this.choices[1])
 			else if (e.code === 'Digit3' || e.code === 'Numpad3') this.chooseUpgrade(this.choices[2])
 			else if (e.code === 'KeyR') this.reroll()
+			return
+		}
+		// Intermission shop open: 1/2/3 buy an offer, Enter/Escape launch the next wave; the rest
+		// is swallowed so movement doesn't leak into the frozen sim.
+		if (this.shopOpen) {
+			if (e.code === 'Enter' || e.code === 'Escape') this.launchFromShop()
+			else if (e.code === 'Digit1' || e.code === 'Numpad1') this.buyOffer(this.shopOffers[0])
+			else if (e.code === 'Digit2' || e.code === 'Numpad2') this.buyOffer(this.shopOffers[1])
+			else if (e.code === 'Digit3' || e.code === 'Numpad3') this.buyOffer(this.shopOffers[2])
 			return
 		}
 		// Pause menu open: Escape resumes; movement keys are swallowed so they don't leak
@@ -301,6 +341,7 @@ export class GameWorld {
 	// the spawn burst, and start the next wave.
 	private startNextWave() {
 		this.intermission = false
+		this.shopOpen = false
 		this.spawnDwell = 0
 		this.spawnFlash = SPAWN_FLASH_MS
 		for (const p of this.pendingPlatforms) p.renderAlpha = 1
@@ -318,16 +359,40 @@ export class GameWorld {
 		if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
 	}
 
-	// Advance the rest phase: accumulate/reset the pedestal hold, crossfade the old arena
-	// out and the new one in by the hold progress, and launch the wave once the hold fills.
-	private updateIntermission(frameTime: number) {
+	// Advance the rest phase: once the player walks back onto the pedestal, open the shop (which
+	// freezes the sim). Buying and launching the next wave happen from the shop overlay — the old
+	// hold-to-continue is replaced by the shop as the pedestal's purpose.
+	private updateIntermission() {
 		this.promptTick++
-		if (this.atSpawn()) this.spawnDwell = Math.min(SPAWN_DWELL_MS, this.spawnDwell + frameTime)
-		else this.spawnDwell = 0
-		const p = this.spawnDwell / SPAWN_DWELL_MS // 0 → 1 hold progress
-		for (const pf of this.proceduralPlatforms) pf.renderAlpha = 1 - p
-		for (const pf of this.pendingPlatforms) pf.renderAlpha = p
-		if (this.spawnDwell >= SPAWN_DWELL_MS) this.startNextWave()
+		if (!this.shopOpen && this.atSpawn()) this.openShop()
+	}
+
+	// --- Intermission shop ----------------------------------------------------
+	// Stock the shop from the player's current weapons/power and freeze the sim.
+	private openShop() {
+		this.shopOffers = rollShopOffers(this, SHOP_SLOTS)
+		this.shopOpen = true
+	}
+
+	// Buy an offer: pay its cost, apply it to the bound weapon/power, then refill just that slot
+	// with a fresh offer (excluding the other visible slots so no duplicate shows). No-op if the
+	// player can't afford it or the offer capped out between roll and click.
+	buyOffer(offer: ShopOffer | undefined) {
+		if (!this.shopOpen || !offer) return
+		if (get(credits) < offer.cost || !offer.available()) return
+		credits.update((c) => c - offer.cost)
+		offer.apply()
+		const others = new Set(this.shopOffers.filter((o) => o.id !== offer.id).map((o) => o.id))
+		const [next] = rollShopOffers(this, 1, others)
+		this.shopOffers = this.shopOffers
+			.map((o) => (o.id === offer.id ? next : o))
+			.filter((o): o is ShopOffer => !!o)
+	}
+
+	// Leave the shop and start the next wave (the shop's primary action).
+	launchFromShop() {
+		this.shopOpen = false
+		this.startNextWave()
 	}
 
 	// Is the player standing on the spawn pedestal ([data-spawn], the Start/Stop button)?
@@ -418,6 +483,15 @@ export class GameWorld {
 		this.xpMul = 1
 		this.regenPerStep = 0
 		this.regenAccum = 0
+		// Brotato global stats back to baseline.
+		this.bonusDamage = 0
+		this.critChance = 0
+		this.dodgeChance = 0
+		this.armorReduction = 0
+		this.lifeStealChance = 0
+		this.rangeBonus = 0
+		this.fireRateMul = 1
+		this.luck = 0
 		this.shieldMax = BASE_SHIELD_MAX
 		this.shieldCharges = BASE_SHIELD_MAX
 		this.shieldRegenSteps = BASE_SHIELD_REGEN
@@ -755,9 +829,11 @@ export class GameWorld {
 		if (this.player.cfg.attackStyle !== 'ranged') return
 		for (const weapon of this.player.weapons) {
 			const muzzle = weapon.muzzle(this.player)
-			// A zero-size aim source centres nearestEnemy exactly on the muzzle point.
+			// A zero-size aim source centres nearestEnemy exactly on the muzzle point. The global
+			// Range stat extends every weapon's own engagement range.
+			const range = weapon.attackRange + this.rangeBonus
 			const target = playing
-				? nearestEnemy({ pos: muzzle, width: 0, height: 0 }, this.platforms, weapon.attackRange)
+				? nearestEnemy({ pos: muzzle, width: 0, height: 0 }, this.platforms, range)
 				: null
 			weapon.aimAt(target, muzzle, this.player.direction)
 			if (!playing) continue
@@ -767,7 +843,8 @@ export class GameWorld {
 			}
 			if (target) {
 				weapon.shoot(muzzle)
-				weapon.cooldown = weapon.fireSteps
+				// Per-weapon cadence, sped up by the global Attack Speed stat (fireRateMul).
+				weapon.cooldown = Math.max(MIN_FIRE_STEPS, Math.round(weapon.fireSteps * this.fireRateMul))
 			}
 		}
 	}
@@ -880,6 +957,16 @@ export class GameWorld {
 		}
 	}
 
+	// Life Steal stat: a connecting bolt has `lifeStealChance` to heal 1 HP (capped at max).
+	// Chance-based rather than per-hit flat so the many small bolts don't trivialise survival.
+	private tryLifeSteal() {
+		if (this.lifeStealChance <= 0) return
+		if (get(playerHp) >= get(maxHp)) return
+		if (Math.random() < this.lifeStealChance) {
+			playerHp.update((h) => Math.min(get(maxHp), h + 1))
+		}
+	}
+
 	// Enemy took a lethal hit: bank score, drop its XP gem (falls under gravity) and,
 	// while the player is hurt, maybe a med-kit.
 	private onEnemyKilled(enemy: Enemy) {
@@ -890,9 +977,21 @@ export class GameWorld {
 				{ value: enemy.xpValue }
 			)
 		)
-		if (get(playerHp) < get(maxHp) && Math.random() < ENEMY_TYPES[enemy.kind].medkitDrop) {
+		// Luck raises every drop chance (Brotato-style): med-kits and credit crates roll at
+		// (base × (1 + luck)).
+		const luckMul = 1 + this.luck
+		if (get(playerHp) < get(maxHp) && Math.random() < ENEMY_TYPES[enemy.kind].medkitDrop * luckMul) {
 			healthPacksStore.add(
 				new HealthPack({ x: enemy.pos.x + enemy.width / 2 - 9, y: enemy.pos.y + enemy.height / 2 })
+			)
+		}
+		// Rare credit crate — the shop currency (banked on walk-over, spent at the intermission).
+		if (Math.random() < CREDIT_DROP_CHANCE * luckMul) {
+			creditCratesStore.add(
+				new CreditCrate(
+					{ x: enemy.pos.x + enemy.width / 2 - 10, y: enemy.pos.y + enemy.height / 2 },
+					{ value: CREDIT_CRATE_VALUE }
+				)
 			)
 		}
 	}
@@ -919,10 +1018,22 @@ export class GameWorld {
 					left: enemy.pos.x
 				}
 				if (collision(enemyRect, projRect)) {
-					// A killing bolt drops XP (tumbles to the floor under gravity, so the
-					// player must leave a safe perch to bank it) and, while hurt, maybe a
-					// med-kit — the shared drop logic melee kills use too.
-					if (enemy.hit(projectile.damage)) this.onEnemyKilled(enemy)
+					// Global stats layer over the bolt's own damage: +Damage flat, then a Crit
+					// roll for CRIT_MULT×. A killing bolt drops XP (tumbles under gravity, so the
+					// player must leave a safe perch to bank it) and, while hurt, maybe a med-kit.
+					let dmg = projectile.damage + this.bonusDamage
+					if (this.critChance > 0 && Math.random() < this.critChance) {
+						dmg = Math.round(dmg * CRIT_MULT)
+						effectsStore.add(
+							new Effect(
+								{ x: enemy.pos.x + enemy.width / 2, y: enemy.pos.y + enemy.height / 2 },
+								'smoke_14',
+								{ centered: true }
+							)
+						)
+					}
+					if (enemy.hit(dmg)) this.onEnemyKilled(enemy)
+					this.tryLifeSteal() // a connecting bolt may heal (Life Steal stat)
 					projectilesStore.delete(projectile)
 					break
 				}
@@ -934,6 +1045,12 @@ export class GameWorld {
 	// and bomb blasts (each passes its own scaled damage). The base shield soaks the hit
 	// first: a charge is spent (no HP lost) and the bubble breaks briefly instead.
 	private damagePlayer(amount = 1) {
+		// Dodge (Brotato): a per-hit roll to avoid the hit entirely. No i-frames granted, so each
+		// overlapping step rolls fresh — a high-dodge build flickers through contact.
+		if (this.dodgeChance > 0 && Math.random() < this.dodgeChance) {
+			effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
+			return
+		}
 		this.shieldRegenTimer = 0 // any incoming damage stalls shield regen
 		if (this.shieldCharges > 0) {
 			this.shieldCharges--
@@ -942,7 +1059,10 @@ export class GameWorld {
 			this.shieldFlashBig = this.shieldCharges === 0 // full break reads bigger
 			return
 		}
-		const hp = get(playerHp) - amount
+		// Armor reduces the damage that reaches HP, but a hit always lands for at least 1 so it
+		// still stings (matters most against the bigger late-wave hits).
+		const dealt = Math.max(1, Math.round(amount * (1 - this.armorReduction)))
+		const hp = get(playerHp) - dealt
 		playerHp.set(hp)
 		this.invuln = this.invulnSteps
 		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
@@ -1105,6 +1225,27 @@ export class GameWorld {
 		}
 	}
 
+	// Walk over a credit crate to bank its value (no magnet — a deliberate detour). Collectable
+	// any time the run is live, including on the walk back to the shop during the intermission.
+	private resolveCreditPickups() {
+		const crates = creditCratesStore.list.slice()
+		if (!crates.length) return
+		const playerRect = {
+			width: this.player.width,
+			height: this.player.height,
+			top: this.player.pos.y,
+			left: this.player.pos.x
+		}
+		for (const crate of crates) {
+			const crateRect = { width: crate.width, height: crate.height, top: crate.pos.y, left: crate.pos.x }
+			if (collision(playerRect, crateRect)) {
+				credits.update((c) => c + crate.value)
+				effectsStore.add(new Effect({ x: crate.pos.x, y: crate.pos.y }, 'smoke_12'))
+				creditCratesStore.delete(crate)
+			}
+		}
+	}
+
 	// --- The loop -------------------------------------------------------------
 	private animate = (timestamp: number) => {
 		if (this.lastTime === 0) this.lastTime = timestamp
@@ -1124,6 +1265,7 @@ export class GameWorld {
 			xpGemsStore.clear()
 			bombsStore.clear()
 			healthPacksStore.clear()
+			creditCratesStore.clear()
 			portalsStore.clear()
 			// (Re)configure the Player from the character registry, then reset its base stats.
 			// One class ships today (Punk); the registry stays the seam for re-adding classes.
@@ -1136,6 +1278,8 @@ export class GameWorld {
 			this.milestone = null
 			this.weaponMilestoneDone = false
 			this.powerMilestoneDone = false
+			this.shopOpen = false
+			this.shopOffers = []
 			this.shockRings.length = 0
 			keys.power = false
 			this.spawnTimer = 0
@@ -1159,8 +1303,9 @@ export class GameWorld {
 			this.pendingLevelUps = 0
 			this.milestone = null
 		}
-		// Sim freeze (field preserved, not cleared): either a level-up pick or the pause menu.
-		const paused = this.levelUpOpen || get(pausedStore)
+		// Sim freeze (field preserved, not cleared): a level-up pick, the pause menu, or the
+		// intermission shop.
+		const paused = this.levelUpOpen || this.shopOpen || get(pausedStore)
 
 		// Advance the wave on a timer, then spawn enemies at the current wave's rate/
 		// cap. Frozen while a pick is open; the field is cleared once truly stopped.
@@ -1169,7 +1314,7 @@ export class GameWorld {
 				// Rest phase: no spawns, no timer. The next wave starts once the player has
 				// walked back to the pedestal and held it for SPAWN_DWELL_MS (crossfading the
 				// arena layout meanwhile).
-				this.updateIntermission(frameTime)
+				this.updateIntermission()
 			} else {
 				// Advance open rifts every frame (they emit their hordes on their own timers).
 				this.updatePortals(frameTime)
@@ -1192,7 +1337,9 @@ export class GameWorld {
 			if (xpGemsStore.list.length) xpGemsStore.clear()
 			if (bombsStore.list.length) bombsStore.clear()
 			if (healthPacksStore.list.length) healthPacksStore.clear()
+			if (creditCratesStore.list.length) creditCratesStore.clear()
 			if (portalsStore.list.length) portalsStore.clear()
+			this.shopOpen = false
 			this.invuln = 0
 			this.waveBanner = 0
 			// Drop the arena ledges so the idle/home screen shows none (they're re-rolled
@@ -1241,6 +1388,10 @@ export class GameWorld {
 					healthPacksStore.list
 						.slice()
 						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
+				if (playing)
+					creditCratesStore.list
+						.slice()
+						.forEach((crate) => crate.update(this.canvas, this.platforms, STEP_DELTA))
 				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
 				// Special power (S): tick its cooldown, fire on press, and detonate a slam that
 				// just landed. After player.update so isFalling reflects this step's landing.
@@ -1254,6 +1405,7 @@ export class GameWorld {
 					this.resolveHits()
 					this.resolveGemPickups()
 					this.resolveHealthPickups()
+					this.resolveCreditPickups()
 					if (this.regenPerStep > 0) this.applyRegen()
 					this.updateShield()
 					if (this.invuln > 0) this.invuln--
@@ -1293,6 +1445,7 @@ export class GameWorld {
 		if (playing) portalsStore.list.forEach((portal) => portal.draw(this.ctx))
 		xpGemsStore.list.forEach((gem) => gem.draw(this.ctx, alpha))
 		healthPacksStore.list.forEach((pack) => pack.draw(this.ctx, alpha))
+		creditCratesStore.list.forEach((crate) => crate.draw(this.ctx, alpha))
 		enemiesStore.list.forEach((enemy) => enemy.draw(this.ctx, animDelta, alpha))
 		bombsStore.list.forEach((bomb) => bomb.draw(this.ctx, alpha))
 		projectilesStore.list.forEach((projectile) => projectile.draw(this.ctx, alpha))
@@ -1322,7 +1475,7 @@ export class GameWorld {
 				drawWaveBanner(this.ctx, this.canvas, this.waveBanner, this.waveBannerLabel)
 			// During the rest phase, prompt the player to walk back to spawn (pulsing), and
 			// show the hold-charge bar once they're on the pedestal.
-			if (this.intermission)
+			if (this.intermission && !this.shopOpen)
 				drawIntermissionPrompt(
 					this.ctx,
 					this.canvas,

@@ -7,6 +7,7 @@
 		wave,
 		xp,
 		level,
+		credits,
 		stopRun,
 		paused,
 		resumeGame,
@@ -166,6 +167,51 @@
 	</div>
 {/if}
 
+{#if world.shopOpen}
+	<!-- Intermission shop: opened by reaching the pedestal between waves (freezes the sim).
+	     Spend credits on per-weapon/power upgrades; buying refills that slot. The launch button
+	     (or Enter/Escape) starts the next wave. -->
+	<div class="fixed inset-0 z-50 flex items-center justify-center select-none">
+		<div class="shop text-center">
+			<div class="flex items-baseline justify-between">
+				<div class="font-bauhaus text-2xl font-bold tracking-widest text-amber-400">BOUTIQUE</div>
+				<div class="font-mono text-sm font-bold tracking-widest text-amber-300">◈ {$credits}</div>
+			</div>
+			<div class="mt-1 mb-4 font-mono text-xs tracking-widest text-slate-400">
+				Améliore tes armes &amp; ton pouvoir
+			</div>
+			<div class="flex flex-col gap-2">
+				{#each world.shopOffers as offer, i (offer.id)}
+					<button
+						class="upgrade"
+						data-kind={offer.kind}
+						disabled={$credits < offer.cost}
+						onclick={() => world.buyOffer(offer)}
+					>
+						<span class="key">{i + 1}</span>
+						<span class="flex flex-col items-start">
+							<span class="name">{offer.name}</span>
+							<span class="desc">{offer.desc}</span>
+						</span>
+						<span class="cost" class:short={$credits < offer.cost}>◈ {offer.cost}</span>
+					</button>
+				{/each}
+				{#if world.shopOffers.length === 0}
+					<div class="py-2 font-mono text-xs tracking-widest text-slate-500">
+						Rien à vendre — tout est au max
+					</div>
+				{/if}
+			</div>
+			<button onclick={() => world.launchFromShop()} class="mt-4 w-full" aria-label="Lancer la vague">
+				<Button text="LANCER LA VAGUE ▶" classes="uppercase w-full" />
+			</button>
+			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+				Touches 1 · 2 · 3 achètent · Entrée lance
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if $weaponSelectOpen}
 	<!-- Pre-run starting-weapon picker. Choosing one commits the starter and begins the run;
 	     the second weapon is earned later at the level milestone. -->
@@ -239,6 +285,34 @@
 		border: 1px solid rgb(51 65 85); /* slate-700 */
 		border-radius: 0.5rem;
 		box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+	}
+	.shop {
+		width: min(92vw, 380px);
+		padding: 1.5rem 1.75rem;
+		background: rgb(15 23 42 / 0.95); /* slate-900 */
+		border: 1px solid rgb(180 83 9 / 0.5); /* amber-700 */
+		border-radius: 0.6rem;
+		box-shadow: 0 10px 40px rgb(0 0 0 / 0.55);
+	}
+	.upgrade .cost {
+		margin-left: auto;
+		flex: none;
+		padding-left: 0.5rem;
+		font-family: ui-monospace, monospace;
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: rgb(251 191 36); /* amber-400 */
+	}
+	.upgrade .cost.short {
+		color: rgb(148 163 184); /* slate-400 — unaffordable */
+	}
+	.upgrade:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.upgrade:disabled:hover {
+		background: rgb(30 41 59 / 0.6); /* cancel the hover lift when disabled */
+		transform: none;
 	}
 	.upgrade {
 		display: flex;

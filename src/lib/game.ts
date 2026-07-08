@@ -32,6 +32,9 @@ export const wave = writable(1)
 export const xp = writable(0)
 export const level = writable(1)
 export const levelXp = writable(0)
+// Shop currency (roadmap chantier 5). Banked from rare credit-crate drops and spent at the
+// intermission shop on weapon/power upgrades. Accumulates across waves, reset each run.
+export const credits = writable(0)
 // XP to advance from the given level to the next. A steep geometric ramp on
 // purpose: level-ups pause the fight, so they must be rare and meaningful (~one
 // every 30-45s) rather than a constant interruption. L1→2 needs 8, then ×1.4
@@ -95,6 +98,7 @@ export function startRun() {
 	level.set(1)
 	levelXp.set(0)
 	levelXpNeeded.set(levelReq(1))
+	credits.set(0)
 	paused.set(false)
 	gameStatus.set('playing')
 }
