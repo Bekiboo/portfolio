@@ -195,6 +195,38 @@ moteur.
   `GameWorld`) : montent + s'estompent sur chaque ennemi touché ; crit plus gros + ambre. Cappés à
   60, purgés avec les shockRings. Alimentés par `resolveHits` (tirs, drone) et `shockwave` (blasts).
 
+### Monde plus grand, caméra & parallaxe
+
+L'arène n'est plus limitée au viewport : c'est un **monde de taille FIXE** en pixels (`WORLD_W = 2400`,
+`WORLD_H = 1200`), scrollé par une **caméra qui suit le perso**. Taille fixe = la map ne change pas avec
+la fenêtre (redimensionner montre plus/moins, ça ne redimensionne pas le niveau). Un plancher
+`WORLD_MIN_VIEW_MUL` garde le monde ≥ viewport sur très grands écrans (couverture + marge de scroll).
+
+- **Champ de vision fixe (zoom-invariant)** : le rendu arène passe par un `viewScale` (px device par
+  unité-monde = `canvas.height / VIEW_H`). On voit toujours `VIEW_H = 760` unités-monde en hauteur (la
+  largeur suit l'aspect), quelle que soit la taille de fenêtre **ou le zoom navigateur (Cmd +/-)** —
+  seul le scale change, pas la portion de map visible. `ctx.scale(viewScale)` est appliqué au rendu
+  arène ; caméra/parallaxe/HUD travaillent en unités-vue (`viewW`/`viewH`). En mode portfolio (idle) on
+  reste à 1:1 device px pour que le perso colle aux vrais éléments du CV qu'il grimpe.
+- **Bornes monde** : les entités ne reçoivent plus le canvas mais un `Bounds` (`{ width, height }`, dans
+  `utils.ts`). GameWorld passe `this.world` en jeu (sol = `world.height`, murs = `0`/`world.width`) et
+  `this.canvas` en mode portfolio (le perso reste dans le viewport pour grimper le CV). Toutes les
+  positions de spawn/pad/layout utilisent `this.world`.
+- **Caméra** (`updateCamera`) : **recentrage doux permanent** (plus de dead-zone) — elle vise toujours
+  le perso centré + un **look-ahead** dans le sens du déplacement (`CAM_LOOKAHEAD_X`, easé via `camLeadX`,
+  revient à 0 à l'arrêt) pour voir ce qui arrive avant d'atteindre le bord, plus un léger biais vers le
+  bas (`CAM_BIAS_Y`) pour garder le sol en vue. Easing séparé par axe (`CAM_LERP_X` réactif, `CAM_LERP_Y`
+  plus doux pour que les sauts restent calmes), clampé au monde. `snap` au début du reveal pour centrer
+  sans pan. Le rendu monde est enveloppé dans `ctx.translate(-camX, -camY)` ; HUD/overlays en écran fixe.
+- **Parallaxe** (`drawParallax`, `static/sprites/Background/{1..5}.png`, skyline industrielle) : dessinée
+  en espace écran par-dessus un dégradé opaque, chaque couche décalée d'une fraction de la caméra
+  (`BG_LAYERS[].fx/fy`, arrière→avant = lent→rapide). Mise à l'échelle sur la hauteur du viewport, tuilée
+  horizontalement ; le bas de chaque couche reste ≥ bas d'écran (pas de trou) et remonte vers le sol
+  quand la caméra descend. Fondu via `dimAlpha` (crossfade idle↔arène).
+- **Tunables** : `WORLD_*_MUL` (taille), `CAM_*` (ressenti caméra), `BG_LAYERS` (vitesses parallaxe).
+  L'altitude des ennemis volants (`enemyTypes.altitude`) est une fraction de `world.height` — si un
+  monde plus haut les sort du cadre, l'ancrer au sol plutôt qu'au haut du monde.
+
 ### Découplage portfolio ↔ jeu
 
 Le jeu était dessiné en fond du CV (voile de focus + trous sur les éléments interactifs). Désormais :

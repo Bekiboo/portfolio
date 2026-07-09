@@ -1,4 +1,4 @@
-import { collision, getSprite, hasSprite } from './utils'
+import { collision, getSprite, hasSprite, type Bounds } from './utils'
 import { effectsStore, enemiesStore, projectilesStore, bombsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import { Projectile } from './Projectile'
@@ -144,7 +144,7 @@ export class Enemy {
 	}
 
 	update(
-		canvas: HTMLCanvasElement,
+		canvas: Bounds,
 		target: Player,
 		platforms: Platform[],
 		deltaTime: number,
@@ -167,7 +167,7 @@ export class Enemy {
 
 	// Ground chaser: nudge horizontally toward the player (with a deadzone so it
 	// stops jittering once it's underneath), then fall and land on platforms.
-	#updateGround(canvas: HTMLCanvasElement, target: Player, platforms: Platform[], deltaTime: number) {
+	#updateGround(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		if (Math.abs(dx) > DEADZONE) {
 			this.direction = dx < 0 ? 'left' : 'right'
@@ -180,7 +180,7 @@ export class Enemy {
 
 	// Homing flyer: drift straight at the player's centre (with a gentle hover
 	// weave), ignoring gravity and platforms. Clamped to stay on screen.
-	#updateFlyer(canvas: HTMLCanvasElement, target: Player, deltaTime: number) {
+	#updateFlyer(canvas: Bounds, target: Player, deltaTime: number) {
 		this.bob += deltaTime
 		const cx = target.pos.x + target.width / 2
 		const cy = target.pos.y + target.height / 2 + Math.sin(this.bob * 0.06) * 18
@@ -199,7 +199,7 @@ export class Enemy {
 	// Ground gunner: hold a standoff band from the player (back off if too close,
 	// close in if too far), face them, and fire hostile bolts on a cooldown while
 	// fully on-screen. Reuses gravity + platform landing like the biker.
-	#updateShooter(canvas: HTMLCanvasElement, target: Player, platforms: Platform[], deltaTime: number) {
+	#updateShooter(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		this.direction = dx < 0 ? 'left' : 'right'
 		const adx = Math.abs(dx)
@@ -221,7 +221,7 @@ export class Enemy {
 	// Hovering bomber: patrols overhead (bouncing off the screen edges, steering
 	// back in if it drifts off) and rains gravity bombs — it does NOT aim at the
 	// player, so its job is area denial that forces the camper to keep moving.
-	#updateBomber(canvas: HTMLCanvasElement, deltaTime: number) {
+	#updateBomber(canvas: Bounds, deltaTime: number) {
 		this.bob += deltaTime
 		// Steer back toward centre near an edge; otherwise cruise.
 		if (this.pos.x < 40) this.velocity.x = Math.abs(this.velocity.x)
@@ -252,7 +252,7 @@ export class Enemy {
 	// speeds up its idle as a tell, then fires a fan of bolts toward its cannon side.
 	// Advances toward the interior in jerky steps and sometimes turns around. It never
 	// fires while moving — hostile output only ever happens from a dead stop.
-	#updateTurret(canvas: HTMLCanvasElement, platforms: Platform[], deltaTime: number) {
+	#updateTurret(canvas: Bounds, platforms: Platform[], deltaTime: number) {
 		// Lazy init: face into the map from whichever side it spawned on. A perched turret
 		// (wall-flush, on an edge ledge) never rolls — it holds its spot and only aims/fires,
 		// so it can't trundle off and fall.
@@ -320,7 +320,7 @@ export class Enemy {
 
 	// Aim the next jerky step one TURRET_STEP toward the cannon, clamped to a margin so
 	// the turret always comes to rest fully on-screen.
-	#setTurretRollTarget(canvas: HTMLCanvasElement) {
+	#setTurretRollTarget(canvas: Bounds) {
 		const minX = TURRET_MARGIN
 		const maxX = canvas.width - this.width - TURRET_MARGIN
 		const target = this.pos.x + this.turretDir * TURRET_STEP
@@ -329,7 +329,7 @@ export class Enemy {
 
 	// Charger: approach like a biker, then periodically wind up (telegraphed) and
 	// dash horizontally at high speed toward the player before recovering.
-	#updateCharger(canvas: HTMLCanvasElement, target: Player, platforms: Platform[], deltaTime: number) {
+	#updateCharger(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		const dy = target.pos.y - this.pos.y
 
@@ -598,7 +598,7 @@ export class Enemy {
 		}
 	}
 
-	#keepWithinCanvas(canvas: HTMLCanvasElement) {
+	#keepWithinCanvas(canvas: Bounds) {
 		if (this.pos.y + this.height > canvas.height) {
 			this.velocity.y = 0
 			this.pos.y = canvas.height - this.height

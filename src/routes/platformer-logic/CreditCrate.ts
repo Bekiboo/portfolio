@@ -1,4 +1,4 @@
-import { collision } from './utils'
+import { collision, type Bounds } from './utils'
 import type { Platform } from './Platform'
 
 const GRAVITY = 0.33 // matches the world gravity used by Player/Enemy/XpGem/HealthPack
@@ -24,7 +24,7 @@ export class CreditCrate {
 		this.velocity = { x: (Math.random() - 0.5) * 4, y: -Math.random() * 3 - 2 }
 	}
 
-	update(canvas: HTMLCanvasElement, platforms: Platform[], deltaTime: number) {
+	update(canvas: Bounds, platforms: Platform[], deltaTime: number) {
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
 		this.velocity.y += GRAVITY
@@ -38,7 +38,7 @@ export class CreditCrate {
 	}
 
 	// Rest on the canvas floor or the top of any platform it lands on.
-	#land(canvas: HTMLCanvasElement, platforms: Platform[]) {
+	#land(canvas: Bounds, platforms: Platform[]) {
 		this.grounded = false
 		if (this.pos.y + this.height >= canvas.height) {
 			this.pos.y = canvas.height - this.height

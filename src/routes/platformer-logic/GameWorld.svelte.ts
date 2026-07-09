@@ -92,6 +92,36 @@ const ELITE_WAVE_INTERVAL = 5 // every Nth wave opens with a scaled-up elite min
 const ENTER_REVEAL_MIN_MS = 550 // reveal dwell before the weapon picker (lets the slide-out + fall play)
 const ENTER_REVEAL_MAX_MS = 2200 // hard cap so the picker always opens even if the fall is long
 
+// World & camera: the arena is a WORLD larger than the viewport, scrolled by a loosely-following
+// camera. Its size is FIXED in world pixels so the map is consistent regardless of the viewport —
+// resizing the window shows more/less of it, it doesn't resize the level. A floor multiple keeps the
+// world at least a bit bigger than the viewport on very large monitors (coverage + a little scroll).
+const WORLD_W = 2400 // fixed world width  (px)
+const WORLD_H = 1200 // fixed world height (px)
+const WORLD_MIN_VIEW_MUL = 1.12 // ...but never smaller than the view × this (huge-monitor safety)
+// Fixed vertical field of view in world units: the arena always shows this many world px tall,
+// whatever the window size OR browser zoom. Only the on-screen scale changes (viewScale), so Cmd +/-
+// just rescales the same view instead of showing a different slice of the map. Width follows aspect.
+const VIEW_H = 760
+// The camera softly recenters on the player at ALL times (no dead-zone that pins it to an edge), and
+// leads in the travel direction so you can see what's coming rather than running blind into the edge.
+const CAM_LERP_X = 0.14 // horizontal easing toward the target (higher = snappier reaction)
+const CAM_LERP_Y = 0.1 //  vertical easing (a touch gentler so jumps stay calm)
+const CAM_LOOKAHEAD_X = 0.1 // lead the view this fraction of the viewport in the travel direction
+const CAM_LEAD_EASE = 0.01 // how fast the look-ahead shifts in/out (and back to 0 when idle)
+const CAM_BIAS_Y = 0.08 // downward bias so the ground below the player stays in view
+// Parallax skyline (static/sprites/Background/{1..5}.png). Back→front: 1 = sky, 5 = nearest. `fx`/`fy`
+// are how much each layer tracks the camera (0 = fixed, 1 = locked to the world); nearer moves more.
+const BG_LAYERS = [
+	{ file: '1', fx: 0.05, fy: 0.03 },
+	{ file: '2', fx: 0.18, fy: 0.08 },
+	{ file: '3', fx: 0.32, fy: 0.12 },
+	{ file: '4', fx: 0.46, fy: 0.16 },
+	{ file: '5', fx: 0.6, fy: 0.2 }
+]
+const BG_IMG_W = 576 // native size of every parallax layer (used to scale + tile them)
+const BG_IMG_H = 324
+
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
 // component is a thin shell that mounts this and renders the modals from the reactive
@@ -196,6 +226,21 @@ export class GameWorld {
 	private spawnSide = 0
 	private invuln = 0
 	private wasPlaying = false
+	// The playfield is a WORLD larger than the viewport (recomputed on resize); entities are confined
+	// to this rather than the canvas. The camera scrolls the viewport around it, behind a parallax
+	// skyline. cameraX/Y are the viewport's top-left in world space (0,0 = portfolio mode).
+	private world = { width: 0, height: 0 }
+	// The on-screen view: viewScale is device px per world unit (so Cmd +/- only rescales); viewW/viewH
+	// are the world units visible (viewH fixed = VIEW_H, viewW follows aspect). Used for the camera,
+	// parallax and HUD (all view-space), while entities live in the full `world`.
+	private viewScale = 1
+	private viewW = 0
+	private viewH = VIEW_H
+	private cameraX = 0
+	private cameraY = 0
+	private camLeadX = 0 // eased look-ahead offset (leads the view in the travel direction)
+	private wasInArena = false
+	private bgImages: HTMLImageElement[] = [] // parallax layers, lazy-loaded in mount()
 	// Entry reveal ('entering'): the character falls into the arena from wherever it stood before the
 	// weapon picker opens. wasEntering detects the rising edge; enterTimer counts the reveal; the pick
 	// opens once landed; enteredFromReveal tells the run's rising edge to keep the fallen pose.
@@ -219,6 +264,12 @@ export class GameWorld {
 		this.canvas = canvas
 		this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 		this.player = new Player({ x: 0, y: 0 })
+		// Preload the parallax skyline layers (drawn behind the arena once a run starts).
+		this.bgImages = BG_LAYERS.map((l) => {
+			const img = new Image()
+			img.src = `/sprites/Background/${l.file}.png`
+			return img
+		})
 		this.spawnPlayerOnPedestal()
 		this.rafId = requestAnimationFrame(this.animate) // Start the animation loop
 	}
@@ -291,6 +342,15 @@ export class GameWorld {
 	private resizeCanvas() {
 		this.canvas.width = this.canvas.clientWidth
 		this.canvas.height = this.canvas.clientHeight
+		// Fixed vertical field of view: viewScale maps world units → device px, so a smaller/larger (or
+		// zoomed) window just rescales the SAME view. Width follows the aspect ratio (not the zoom).
+		this.viewScale = (this.canvas.height || 1) / VIEW_H
+		this.viewH = VIEW_H
+		this.viewW = this.canvas.width / this.viewScale
+		// Fixed world size (so the map doesn't change with the window), floored to stay bigger than the
+		// view on very wide screens.
+		this.world.width = Math.max(WORLD_W, this.viewW * WORLD_MIN_VIEW_MUL)
+		this.world.height = Math.max(WORLD_H, this.viewH * WORLD_MIN_VIEW_MUL)
 		this.canvasDirty = false
 	}
 
@@ -316,8 +376,8 @@ export class GameWorld {
 	// regular column grid so spacing reads as designed. All marked visible so Platform.draw()
 	// renders them. Returns the set; the caller decides if it's the live or pending layout.
 	private buildLayout(): Platform[] {
-		const W = this.canvas.width
-		const H = this.canvas.height
+		const W = this.world.width
+		const H = this.world.height
 		const thick = 20
 		const ledges: Platform[] = []
 
@@ -453,7 +513,7 @@ export class GameWorld {
 	private spawnRect() {
 		const w = 96
 		const h = 14
-		return { x: this.canvas.width / 2 - w / 2, top: this.canvas.height - h, width: w, height: h }
+		return { x: this.world.width / 2 - w / 2, top: this.world.height - h, width: w, height: h }
 	}
 
 	// Is the player standing on the spawn pad? Horizontal overlap (with a little slack) + feet near
@@ -463,7 +523,7 @@ export class GameWorld {
 		const px = this.player.pos.x + this.player.width / 2
 		const feet = this.player.pos.y + this.player.height
 		const nearX = px > r.x - 50 && px < r.x + r.width + 50
-		const nearY = feet > this.canvas.height - 70
+		const nearY = feet > this.world.height - 70
 		return nearX && nearY
 	}
 
@@ -472,7 +532,7 @@ export class GameWorld {
 	private placePlayerAtSpawn() {
 		const r = this.spawnRect()
 		this.player.pos.x = r.x + r.width / 2 - this.player.width / 2
-		this.player.pos.y = this.canvas.height - this.player.height
+		this.player.pos.y = this.world.height - this.player.height
 		this.player.prevPos.x = this.player.pos.x
 		this.player.prevPos.y = this.player.pos.y
 		this.player.velocity.x = 0
@@ -757,14 +817,14 @@ export class GameWorld {
 		// off the nearest side.
 		const x =
 			t.spawnX === 'onscreen'
-				? this.canvas.width * (0.15 + Math.random() * 0.7)
+				? this.world.width * (0.15 + Math.random() * 0.7)
 				: fromLeft
 					? -60
-					: this.canvas.width + 60
+					: this.world.width + 60
 		// 'air' kinds enter high in an altitude band; ground kinds at floor level —
 		// offset by their own height so a tall brute doesn't spawn sunk into the floor.
 		const y =
-			t.spawnY === 'air' ? this.canvas.height * (t.altitude ?? 0.32) : this.canvas.height - t.height
+			t.spawnY === 'air' ? this.world.height * (t.altitude ?? 0.32) : this.world.height - t.height
 		// Chase kinds scale speed with the wave (waveSpeedMul); fixed kinds use their base.
 		const speed = t.waveSpeedMul != null ? waveEnemySpeed(w) * t.waveSpeedMul : t.speed
 		enemiesStore.add(
@@ -884,8 +944,8 @@ export class GameWorld {
 	// side; ground rifts sit at floor level at a screen edge (preferred), or sometimes ride a
 	// visible ledge (edge perches first) so a pack can drop in from a platform.
 	private pickPortalSite(placement: PortalPlacement): { pos: { x: number; y: number }; anchor: Platform | null } {
-		const W = this.canvas.width
-		const H = this.canvas.height
+		const W = this.world.width
+		const H = this.world.height
 		const fromLeft = this.spawnSide++ % 2 === 0
 		if (placement === 'air') {
 			return { pos: { x: fromLeft ? W * 0.14 : W * 0.86, y: H * 0.3 }, anchor: null }
@@ -904,7 +964,7 @@ export class GameWorld {
 		const { pos, anchor } = this.pickPortalSite(placement)
 		// Ground rifts rise out of their surface (a ledge top, else the canvas floor); air rifts
 		// float free (null). Keeps the rift from sinking under the ground or a passerelle.
-		const baseY = placement === 'air' ? null : anchor ? anchor.top : this.canvas.height
+		const baseY = placement === 'air' ? null : anchor ? anchor.top : this.world.height
 		portalsStore.add(new Portal(pos, placement, kinds, anchor, baseY))
 	}
 
@@ -927,9 +987,9 @@ export class GameWorld {
 		const t = ENEMY_TYPES[kind]
 		const eh = t.height * ELITE_SIZE_MUL
 		const ew = t.width * ELITE_SIZE_MUL
-		const x = this.canvas.width / 2 - ew / 2
+		const x = this.world.width / 2 - ew / 2
 		const y =
-			t.spawnY === 'air' ? this.canvas.height * (t.altitude ?? 0.32) : this.canvas.height - eh - 2
+			t.spawnY === 'air' ? this.world.height * (t.altitude ?? 0.32) : this.world.height - eh - 2
 		enemiesStore.add(this.makeEnemy(kind, x, y, true))
 		const cx = x + ew / 2
 		const cy = y + eh / 2
@@ -952,7 +1012,7 @@ export class GameWorld {
 			y = a.top - t.height
 		} else {
 			x = portal.pos.x - t.width / 2
-			y = this.canvas.height - t.height
+			y = this.world.height - t.height
 		}
 		enemiesStore.add(this.makeEnemy(kind, x, y))
 	}
@@ -1456,6 +1516,64 @@ export class GameWorld {
 		}
 	}
 
+	// --- Camera & parallax ----------------------------------------------------
+	// Softly recenter on the player at all times (no dead-zone), leading the view in the travel
+	// direction so you see what's coming instead of running blind into the edge. The lead eases in/out
+	// (and back to 0 when idle → exact recenter); a gentle downward bias keeps the ground in view.
+	// Easing keeps it smooth so it doesn't yank/nauseate. `snap` jumps straight to target (run entry).
+	private updateCamera(snap = false) {
+		const viewW = this.viewW
+		const viewH = this.viewH
+		const maxX = Math.max(0, this.world.width - viewW)
+		const maxY = Math.max(0, this.world.height - viewH)
+		const px = this.player.pos.x + this.player.width / 2
+		const py = this.player.pos.y + this.player.height / 2
+		const dir = this.player.velocity.x > 0.01 ? 1 : this.player.velocity.x < -0.01 ? -1 : 0
+		const desiredLead = dir * viewW * CAM_LOOKAHEAD_X
+		this.camLeadX += (desiredLead - this.camLeadX) * (snap ? 1 : CAM_LEAD_EASE)
+		const tx = Math.max(0, Math.min(px - viewW / 2 + this.camLeadX, maxX))
+		const ty = Math.max(0, Math.min(py - viewH / 2 + viewH * CAM_BIAS_Y, maxY))
+		if (snap) {
+			this.cameraX = tx
+			this.cameraY = ty
+		} else {
+			this.cameraX += (tx - this.cameraX) * CAM_LERP_X
+			this.cameraY += (ty - this.cameraY) * CAM_LERP_Y
+		}
+	}
+
+	// Parallax skyline behind the arena (replaces the flat focus veil). Drawn in SCREEN space with a
+	// per-layer fraction of the camera offset — far layers barely move, near layers more — over an
+	// opaque gradient base so the CV never bleeds through once faded in. `alpha` is the idle↔arena
+	// crossfade (dimAlpha). Each layer is scaled to the viewport height and tiled across its width;
+	// its bottom stays at/below the viewport bottom, rising toward the floor as the camera descends.
+	private drawParallax(alpha: number) {
+		const ctx = this.ctx
+		const viewW = this.viewW
+		const viewH = this.viewH
+		const maxY = Math.max(1, this.world.height - viewH)
+		ctx.save()
+		ctx.globalAlpha = Math.min(1, alpha)
+		const g = ctx.createLinearGradient(0, 0, 0, viewH)
+		g.addColorStop(0, '#0b1120') // slate-950-ish top
+		g.addColorStop(1, '#05070e') // darker toward the floor
+		ctx.fillStyle = g
+		ctx.fillRect(0, 0, viewW, viewH)
+		const scale = viewH / BG_IMG_H
+		const tileW = BG_IMG_W * scale
+		for (let i = 0; i < BG_LAYERS.length; i++) {
+			const img = this.bgImages[i]
+			if (!img || !img.complete || img.naturalWidth === 0) continue
+			const layer = BG_LAYERS[i]
+			const bottomY = viewH + (maxY - this.cameraY) * layer.fy // ≥ viewH → no gap at the bottom
+			const topY = bottomY - viewH
+			let offX = -((this.cameraX * layer.fx) % tileW)
+			if (offX > 0) offX -= tileW
+			for (let x = offX; x < viewW; x += tileW) ctx.drawImage(img, x, topY, tileW, viewH)
+		}
+		ctx.restore()
+	}
+
 	// --- The loop -------------------------------------------------------------
 	private animate = (timestamp: number) => {
 		if (this.lastTime === 0) this.lastTime = timestamp
@@ -1468,6 +1586,9 @@ export class GameWorld {
 		const status = get(gameStatus)
 		const playing = status === 'playing'
 		const entering = status === 'entering'
+		// In the arena (world coords + camera + parallax) for the reveal, the run and the game-over
+		// card; the portfolio (screen coords, no camera) otherwise.
+		const inArena = playing || entering || status === 'over'
 
 		// Rising edge of the reveal (idle/over → entering): build the arena the character will fall
 		// INTO, clear any stale field, and let gravity carry it down from wherever it stood (the DOM
@@ -1493,8 +1614,14 @@ export class GameWorld {
 			this.enterTimer = 0
 			this.enterPickShown = false
 			this.enteredFromReveal = true // the coming run keeps the fallen pose (no spawn-pad snap)
+			this.updateCamera(true) // centre the view on the character before it starts falling
 		}
 		this.wasEntering = entering
+
+		// Falling edge of the arena (→ idle, i.e. a quit): the character's position is in world space,
+		// so pop it back onto the portfolio pedestal (screen space) so it's visible on the returning CV.
+		if (this.wasInArena && !inArena) this.spawnPlayerOnPedestal()
+		this.wasInArena = inArena
 
 		// On the rising edge of a run, reset the run state. When the run was reached through the reveal
 		// the arena + the player's position were already established (it fell in), so we DON'T rebuild
@@ -1619,6 +1746,10 @@ export class GameWorld {
 			keys.power = false
 		}
 
+		// Entities are confined to the WORLD while in the arena; to the viewport in portfolio mode
+		// (idle), where the character roams/climbs the CV within the visible screen.
+		const bounds = inArena ? this.world : this.canvas
+
 		// Advance physics in fixed steps, consuming the elapsed real time. A level-up
 		// pause skips the updates entirely, freezing every entity in place.
 		this.accumulator += frameTime
@@ -1638,24 +1769,24 @@ export class GameWorld {
 					: this.magnetRadius
 				xpGemsStore.list
 					.slice()
-					.forEach((gem) => gem.update(this.canvas, this.player, this.platforms, STEP_DELTA, magnet))
+					.forEach((gem) => gem.update(bounds, this.player, this.platforms, STEP_DELTA, magnet))
 				if (playing)
 					enemiesStore.list.forEach((enemy) =>
-						enemy.update(this.canvas, this.player, this.platforms, STEP_DELTA, enemiesStore.list)
+						enemy.update(bounds, this.player, this.platforms, STEP_DELTA, enemiesStore.list)
 					)
 				if (playing)
 					bombsStore.list
 						.slice()
-						.forEach((bomb) => bomb.update(this.canvas, this.platforms, STEP_DELTA))
+						.forEach((bomb) => bomb.update(bounds, this.platforms, STEP_DELTA))
 				if (playing)
 					healthPacksStore.list
 						.slice()
-						.forEach((pack) => pack.update(this.canvas, this.platforms, STEP_DELTA))
+						.forEach((pack) => pack.update(bounds, this.platforms, STEP_DELTA))
 				if (playing)
 					creditCratesStore.list
 						.slice()
-						.forEach((crate) => crate.update(this.canvas, this.platforms, STEP_DELTA))
-				this.player.update(this.canvas, keys, this.platforms, STEP_DELTA)
+						.forEach((crate) => crate.update(bounds, this.platforms, STEP_DELTA))
+				this.player.update(bounds, keys, this.platforms, STEP_DELTA)
 				// Special power (S): tick its cooldown, fire on press, and detonate a slam that
 				// just landed. After player.update so isFalling reflects this step's landing.
 				if (playing) {
@@ -1680,30 +1811,38 @@ export class GameWorld {
 			}
 			this.accumulator -= FIXED_STEP
 		}
+		// Loosely track the character after the step so the view follows this frame's movement.
+		if (inArena) this.updateCamera()
 		// Freeze interpolation + sprite animation while paused so entities hold still.
 		const alpha = paused ? 1 : this.accumulator / FIXED_STEP
 		const animDelta = paused ? 0 : frameTime / 12
 
-		// Render once per frame, interpolating entities between their last two steps.
+		// Render once per frame, interpolating entities between their last two steps. Reset any prior
+		// transform, clear the whole device canvas, then — IN THE ARENA ONLY — apply the fixed-view
+		// scale so the world/parallax/HUD render in view units (zoom-invariant). In portfolio mode we
+		// stay at 1:1 device px so the character lines up with the real CV elements it climbs.
+		this.ctx.setTransform(1, 0, 0, 1, 0, 0)
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-		// Arena backdrop: a run HIDES the portfolio (see +layout), so fill an opaque arena behind the
-		// sprites while playing, eased in/out so idle↔play crossfades. At idle it stays transparent —
-		// the CV shows through and the player climbs the page (portfolio mode). Replaces the old
-		// focus-veil-with-holes now that there's no CV to selectively reveal.
-		// Hold the backdrop up through the game-over screen too (portfolio stays hidden until idle),
-		// so the death card sits in the arena rather than dissolving back to the page.
+		if (inArena) this.ctx.scale(this.viewScale, this.viewScale)
+		// Arena backdrop: a run HIDES the portfolio (see +layout), so paint the parallax skyline behind
+		// the sprites, eased in/out (dimAlpha) so idle↔play crossfades. At idle it stays transparent —
+		// the CV shows through and the player climbs the page (portfolio mode). Held up through the
+		// game-over card too (portfolio stays hidden until idle), so death sits in the arena.
 		this.dimAlpha += ((get(gameStatus) !== 'idle' ? 1 : 0) - this.dimAlpha) * 0.12
-		if (this.dimAlpha > 0.01) {
-			this.ctx.save()
-			this.ctx.globalAlpha = Math.min(1, this.dimAlpha)
-			const g = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height)
-			g.addColorStop(0, '#0b1120') // slate-950-ish top
-			g.addColorStop(1, '#05070e') // darker toward the floor
-			this.ctx.fillStyle = g
-			this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
-			this.ctx.fillStyle = 'rgba(148, 163, 184, 0.05)' // faint floor band
-			this.ctx.fillRect(0, this.canvas.height - 46, this.canvas.width, 46)
-			this.ctx.restore()
+		// Only under the view scale (inArena); on a quit the CV returns cleanly without a mis-scaled draw.
+		if (inArena && this.dimAlpha > 0.01) this.drawParallax(this.dimAlpha)
+
+		// World space: shift everything by the camera while in the arena. In portfolio mode the
+		// transform is identity, so entities render at their screen coords and climb the live CV.
+		this.ctx.save()
+		if (inArena) this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY))
+		// World floor: a faint ground band across the arena's bottom edge with a lit cyan lip.
+		if (inArena) {
+			const fy = this.world.height
+			this.ctx.fillStyle = 'rgba(148, 163, 184, 0.06)'
+			this.ctx.fillRect(0, fy - 44, this.world.width, 44)
+			this.ctx.fillStyle = 'rgba(103, 232, 249, 0.1)'
+			this.ctx.fillRect(0, fy - 2, this.world.width, 2)
 		}
 		for (const platform of this.platforms) platform.draw(this.ctx)
 		// The in-game spawn pad (home base for the intermission shop), on the floor under the sprites.
@@ -1737,26 +1876,29 @@ export class GameWorld {
 		this.drawShockRings(frameTime)
 		// Floating damage numbers, topmost so they read over sprites and rings alike.
 		this.drawDamageNumbers(frameTime)
+		this.ctx.restore() // end world space — the HUD/overlays below are screen-fixed
 
 		if (playing) {
-			drawHud(this.ctx, this.canvas)
+			// The HUD is drawn under the view scale (still in effect here), so it uses view units.
+			const view = { width: this.viewW, height: this.viewH }
+			drawHud(this.ctx, view)
 			// Special-power badge (glyph + recharge wipe), or nothing until one is earned.
 			const pw = this.player.power
 			drawPowerHud(
 				this.ctx,
-				this.canvas,
+				view,
 				pw
 					? { glyph: pw.type.glyph, color: pw.type.color, charge: 1 - pw.cooldown / Math.max(1, pw.cooldownSteps) }
 					: null
 			)
 			if (this.waveBanner > 0)
-				drawWaveBanner(this.ctx, this.canvas, this.waveBanner, this.waveBannerLabel)
+				drawWaveBanner(this.ctx, view, this.waveBanner, this.waveBannerLabel)
 			// During the rest phase, prompt the player to walk back to spawn (pulsing), and
 			// show the hold-charge bar once they're on the pedestal.
 			if (this.intermission && !this.shopOpen)
 				drawIntermissionPrompt(
 					this.ctx,
-					this.canvas,
+					view,
 					0.5 + 0.5 * Math.sin(this.promptTick * 0.08),
 					this.spawnDwell / SPAWN_DWELL_MS
 				)

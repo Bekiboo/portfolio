@@ -1,4 +1,4 @@
-import { collision } from './utils'
+import { collision, type Bounds } from './utils'
 import { bombsStore, effectsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import type { Platform } from './Platform'
@@ -37,7 +37,7 @@ export class Bomb {
 		this.blastRadius = opts.blastRadius ?? 74
 	}
 
-	update(canvas: HTMLCanvasElement, platforms: Platform[], deltaTime: number) {
+	update(canvas: Bounds, platforms: Platform[], deltaTime: number) {
 		if (this.state === 'exploding') {
 			this.blastTimer--
 			if (this.blastTimer <= 0) bombsStore.delete(this)

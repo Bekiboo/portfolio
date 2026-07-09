@@ -2,6 +2,15 @@ import sprites from './spritesData'
 
 type Rect = { width: number; height: number; top: number; left: number }
 
+// The playfield bounds an entity is confined to (floor at `height`, right wall at `width`).
+// Structurally satisfied by the canvas, but the arena is now a WORLD larger than the viewport,
+// so entities take these bounds (GameWorld passes its world size) rather than the canvas itself.
+// The camera then scrolls the viewport around this world (see GameWorld render + parallax).
+export interface Bounds {
+	width: number
+	height: number
+}
+
 // Generic AABB overlap test. Works for any two rectangles — platforms, entity
 // hitboxes, projectiles — which is what lets entity↔entity collisions reuse it.
 export const collision = (rect1: Rect, rect2: Rect) => {

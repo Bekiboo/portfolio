@@ -7,7 +7,7 @@ import { Weapon } from './Weapon'
 import type { WeaponKind } from './weaponTypes'
 import { Power } from './Power'
 import type { PowerKind } from './powerTypes'
-import { collision, getSprite, hasSprite } from './utils'
+import { collision, getSprite, hasSprite, type Bounds } from './utils'
 
 const GRAVITY = 0.33
 
@@ -112,7 +112,7 @@ export class Player {
 		this.isFalling = true
 	}
 
-	update(canvas: HTMLCanvasElement, keys: KeyState, platforms: Platform[], deltaTime: number) {
+	update(canvas: Bounds, keys: KeyState, platforms: Platform[], deltaTime: number) {
 		// Snapshot the pre-step position so draw() can interpolate between steps.
 		this.prevPos.x = this.pos.x
 		this.prevPos.y = this.pos.y
@@ -324,7 +324,7 @@ export class Player {
 		}
 	}
 
-	#keepWithinCanvas(canvas: HTMLCanvasElement) {
+	#keepWithinCanvas(canvas: Bounds) {
 		// stop from going below canvas
 		if (this.pos.y + this.height > canvas.height) {
 			this.velocity.y = 0

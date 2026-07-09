@@ -1,4 +1,4 @@
-import { collision } from './utils'
+import { collision, type Bounds } from './utils'
 import type { Platform } from './Platform'
 import type { Player } from './Player'
 
@@ -48,7 +48,7 @@ export class XpGem {
 	}
 
 	update(
-		canvas: HTMLCanvasElement,
+		canvas: Bounds,
 		player: Player,
 		platforms: Platform[],
 		deltaTime: number,
@@ -81,7 +81,7 @@ export class XpGem {
 	}
 
 	// Rest on the canvas floor or the top of any platform it lands on.
-	#land(canvas: HTMLCanvasElement, platforms: Platform[]) {
+	#land(canvas: Bounds, platforms: Platform[]) {
 		this.grounded = false
 		if (this.pos.y + this.height >= canvas.height) {
 			this.pos.y = canvas.height - this.height

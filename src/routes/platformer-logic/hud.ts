@@ -1,4 +1,5 @@
 import { get } from 'svelte/store'
+import type { Bounds } from './utils'
 import { playerHp, maxHp, wave, level, score, levelXp, levelXpNeeded, credits } from '$lib/game'
 
 // Canvas HUD + wave banner. Drawn on top of the focus-mode veil so run state stays
@@ -9,7 +10,7 @@ import { playerHp, maxHp, wave, level, score, levelXp, levelXpNeeded, credits } 
 export const WAVE_BANNER_MS = 1400
 
 // HP gauge + wave/score line + XP bar.
-export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+export const drawHud = (ctx: CanvasRenderingContext2D, canvas: Bounds) => {
 	const cx = canvas.width / 2
 	ctx.save()
 	ctx.textAlign = 'center'
@@ -75,7 +76,7 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement
 // null when no power is equipped yet, so the badge only appears once one is earned.
 export const drawPowerHud = (
 	ctx: CanvasRenderingContext2D,
-	canvas: HTMLCanvasElement,
+	canvas: Bounds,
 	power: { glyph: string; color: string; charge: number } | null
 ) => {
 	if (!power) return
@@ -113,7 +114,7 @@ export const drawPowerHud = (
 // `waveBanner` is the ms remaining on the current banner (WAVE_BANNER_MS → 0).
 export const drawWaveBanner = (
 	ctx: CanvasRenderingContext2D,
-	canvas: HTMLCanvasElement,
+	canvas: Bounds,
 	waveBanner: number,
 	label = ''
 ) => {
@@ -141,7 +142,7 @@ export const drawWaveBanner = (
 // draw a charging bar so the 1.5s hold reads clearly.
 export const drawIntermissionPrompt = (
 	ctx: CanvasRenderingContext2D,
-	canvas: HTMLCanvasElement,
+	canvas: Bounds,
 	pulse: number,
 	progress: number
 ) => {
