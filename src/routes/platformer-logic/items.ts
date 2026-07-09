@@ -1,8 +1,16 @@
+import { get } from 'svelte/store'
 import { enemiesStore, projectilesStore } from '$lib/stores'
+import { maxHp, playerHp } from '$lib/game'
 import { Projectile } from './Projectile'
-import { MAX_SHIELD_MAX, MIN_SHIELD_REGEN, MAX_JUMP } from './upgrades'
+import { MAX_SHIELD_MAX, MIN_SHIELD_REGEN, MAX_JUMP, MAX_ARMOR } from './upgrades'
 import type { GameWorld } from './GameWorld.svelte'
 import type { Enemy } from './Enemy'
+
+// Trade-off items floor Max HP so a "−PV" relic can never zero the player out, and clamp armor to
+// the same band the XP stat uses (positive side) with a small negative floor (so a "+dégâts subis"
+// relic bites without becoming absurd).
+const HP_FLOOR = 3
+const MIN_ARMOR = -0.5
 
 // --- Passive items (roadmap: misc bonuses) ---------------------------------------------------
 // The third acquisition channel, alongside the XP stat pool and the per-weapon/power shop: run-
@@ -48,6 +56,7 @@ export interface ItemType extends ItemHooks {
 	color: string
 	cost: number // base credit price (the shop ramps it per owned stack)
 	maxStacks?: number // default 1
+	tradeoff?: boolean // a risk relic (strong upside + a real malus) — flagged red on the shop card
 }
 
 // --- Drone tuning ---
@@ -227,6 +236,54 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 				'#f59e0b'
 			)
 		}
+	},
+
+	// --- Trade-offs: strong upside + a real malus (the tension picks) --------------------------
+	// Glass cannon: hits much harder, but you're fragile.
+	glasscannon: {
+		id: 'glasscannon',
+		name: 'Canon de verre',
+		blurb: '+3 dégâts, mais −4 PV max',
+		glyph: '⚔',
+		color: '#f87171', // red-400
+		cost: 26,
+		maxStacks: 2,
+		tradeoff: true,
+		onAcquire: (w) => {
+			w.bonusDamage += 3
+			maxHp.update((m) => Math.max(HP_FLOOR, m - 4))
+			playerHp.update((h) => Math.min(get(maxHp), h))
+		}
+	},
+	// Berserk: fires faster, but every hit hurts more.
+	berserk: {
+		id: 'berserk',
+		name: 'Fureur',
+		blurb: 'Cadence +15%, mais dégâts subis +12%',
+		glyph: '⚡',
+		color: '#fb923c', // orange-400
+		cost: 24,
+		maxStacks: 2,
+		tradeoff: true,
+		onAcquire: (w) => {
+			w.fireRateMul *= 0.85
+			w.armorReduction = Math.max(MIN_ARMOR, w.armorReduction - 0.12)
+		}
+	},
+	// Heavy plating: soaks damage, but slows you down.
+	heavyplating: {
+		id: 'heavyplating',
+		name: 'Plaques lourdes',
+		blurb: 'Dégâts subis −12%, mais déplacement −',
+		glyph: '▧',
+		color: '#60a5fa', // blue-400
+		cost: 24,
+		maxStacks: 2,
+		tradeoff: true,
+		onAcquire: (w) => {
+			w.armorReduction = Math.min(MAX_ARMOR, w.armorReduction + 0.12)
+			w.player.speed = Math.max(2, w.player.speed - 0.6)
+		}
 	}
 }
 
@@ -241,6 +298,7 @@ export interface ItemOffer {
 	cost: number
 	glyph: string
 	kind: 'item'
+	tradeoff: boolean // drives the red risk-accent on the shop card
 	apply: () => void
 	available: () => boolean
 }
@@ -267,6 +325,7 @@ export const rollItemOffers = (
 			cost: Math.round(type.cost * (1 + owned * 0.6)), // pricier per extra stack
 			glyph: type.glyph,
 			kind: 'item',
+			tradeoff: type.tradeoff ?? false,
 			apply: () => w.acquireItem(type),
 			available: () => w.itemStacks(type.id) < (type.maxStacks ?? 1)
 		})

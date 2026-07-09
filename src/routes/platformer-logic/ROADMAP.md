@@ -178,9 +178,45 @@ moteur.
   +charge/regen) · **Bottes à ressort** (`onAcquire`, saut+vitesse) · **Drone de combat**
   (`onTick`+`onDraw`, orbite + tir auto via `projectilesStore`, profite de +Dégâts/crit) · **Épines**
   (`onDamaged`, blast de riposte) · **Charge explosive** (`onKill`, blast en chaîne auto-équilibré).
-- À faire ensuite (archi prête, = data) : trade-offs / stats négatives, objets à malus, élites/boss
-  aux jalons de vague, nombres flottants ; brancher des objets sur `onHit`/`onWaveStart` (câblés,
-  non encore utilisés) ; tuner coûts/caps/nombre de slots.
+- Brancher des objets sur `onHit`/`onWaveStart` (câblés, non encore utilisés) ; tuner coûts/caps/
+  nombre de slots.
+
+### Tension & lisibilité (post-objets)
+
+- **Trade-offs / reliques à malus** (`items.ts`, flag `tradeoff` → carte rouge dans la boutique) :
+  Canon de verre (+3 dégâts / −4 PV max), Fureur (+cadence / +dégâts subis), Plaques lourdes
+  (+armure / −vitesse). Garde-fous : `HP_FLOOR` (les −PV ne peuvent pas te tuer), `MIN_ARMOR`/
+  `MAX_ARMOR` sur l'armure.
+- **Élites aux jalons** (`Enemy.elite` + `ELITE_*` dans `Enemy.ts`, `spawnElite` + `ELITE_WAVE_INTERVAL`
+  dans `GameWorld`) : toutes les 5 vagues, un mini-boss scale-up (×6 PV, +dégâts, ×5 XP, plus gros,
+  halo ambre) débarque centre-scène avec un anneau de choc, et lâche un **gros coffre de crédits
+  garanti**. Les vagues thématiques `eliteAtStart` gardent leur mini-boss normal via rift hors jalon.
+- **Nombres de dégâts flottants** (`damageNumbers` + `spawnDamageNumber`/`drawDamageNumbers` dans
+  `GameWorld`) : montent + s'estompent sur chaque ennemi touché ; crit plus gros + ambre. Cappés à
+  60, purgés avec les shockRings. Alimentés par `resolveHits` (tirs, drone) et `shockwave` (blasts).
+
+### Découplage portfolio ↔ jeu
+
+Le jeu était dessiné en fond du CV (voile de focus + trous sur les éléments interactifs). Désormais :
+
+- **Mode portfolio (`gameStatus === 'idle'`)** : le CV est vivant, le perso roam/grimpe les éléments
+  `[data-colliding]` (plateformes DOM), le voile est transparent. Inchangé.
+- **En jeu (`entering`/`playing`/`over`)** : le portfolio **disparaît entièrement** (`+layout.svelte` :
+  slide-out échelonné — le header glisse à gauche, chaque `main > section` glisse à droite + fade avec
+  un `transition-delay` croissant ; `.portfolio.in-game` toujours `inert`, laissé monté pour un retour
+  instantané à idle). Le canvas peint un **backdrop d'arène opaque** (dégradé + bande de sol) qui se
+  fond via `dimAlpha`, et les plateformes sont **100% procédurales** (`collectPlatforms` ignore le DOM
+  hors idle).
+- **Reveal d'entrée (`'entering'`)** : un état intermédiaire. Cliquer START → `requestLaunch()` passe en
+  `entering` (au lieu d'ouvrir le picker) : le portfolio s'efface, l'arène wave-1 est bâtie, et le perso
+  **tombe depuis là où il était** (les plateformes DOM disparaissent, il traverse la page vers le sol —
+  **plus de téléport**). GameWorld ouvre le picker d'arme (`openWeaponSelect`) **une fois posé**
+  (`ENTER_REVEAL_MIN_MS`, cap `MAX`). Donc l'environnement apparaît **avant** le choix d'arme, plus après.
+  Le run (`playing`) réutilise l'arène + la pose du reveal (`enteredFromReveal` saute le rebuild/snap).
+- **Socle de spawn in-game** : plus le bouton Start `[data-spawn]`, mais un pad dessiné bas-centre de
+  l'arène (`spawnRect`/`drawSpawnPad`), affiché dès le reveal ; `atSpawn`/glow/flash le lisent.
+  `placePlayerAtSpawn` ne sert plus qu'au fallback (run sans reveal). `spawnPlayerOnPedestal` (mount
+  idle) garde le `[data-spawn]` DOM. Sol/murs implicites = bords du canvas (Player.keepWithinCanvas).
 
 ## Parké : le système multi-perso (à reprendre plus tard)
 

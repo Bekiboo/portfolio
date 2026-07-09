@@ -210,7 +210,7 @@
 				{#each world.itemOffers as offer, i (offer.id)}
 					<button
 						class="upgrade"
-						data-kind="item"
+						data-kind={offer.tradeoff ? 'tradeoff' : 'item'}
 						disabled={$credits < offer.cost}
 						onclick={() => world.buyItem(offer)}
 					>
@@ -425,6 +425,14 @@
 	}
 	.upgrade[data-kind='item'] .key {
 		color: rgb(45 212 191);
+	}
+	/* Trade-off / risk relics: red accent + tinted body so the malus reads as a warning. */
+	.upgrade[data-kind='tradeoff'] {
+		border-color: rgb(248 113 113 / 0.6); /* red-400 */
+		background: rgb(127 29 29 / 0.25); /* red-900 */
+	}
+	.upgrade[data-kind='tradeoff'] .key {
+		color: rgb(248 113 113);
 	}
 	/* Small section header above each shop board. */
 	.board-label {

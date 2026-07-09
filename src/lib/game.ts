@@ -2,9 +2,10 @@ import { writable, derived, get } from 'svelte/store'
 import { CHARACTERS } from '../routes/platformer-logic/characters'
 import type { WeaponKind } from '../routes/platformer-logic/weaponTypes'
 
-export type GameStatus = 'idle' | 'playing' | 'over'
+export type GameStatus = 'idle' | 'entering' | 'playing' | 'over'
 
-// idle → nothing running · playing → active run · over → game-over screen.
+// idle → nothing running · entering → the reveal (portfolio slides out, the character falls into
+// the arena) before the weapon picker · playing → active run · over → game-over screen.
 // Clicks fire and the page text is unselectable only while 'playing'; movement,
 // jump and aim work regardless of status.
 export const gameStatus = writable<GameStatus>('idle')
@@ -70,14 +71,24 @@ export function addXp(value: number): number {
 export const startingWeapon = writable<WeaponKind>('pistol')
 export const weaponSelectOpen = writable(false)
 
-/** Open the starting-weapon picker (from the Start button / Restart). No run yet. */
+/** Begin the reveal (from the Start button / Restart): hide the portfolio and drop into the arena.
+ *  The character falls in from wherever it stood; GameWorld opens the weapon picker once it lands
+ *  (openWeaponSelect). So the new environment appears BEFORE the picker, not after it. */
 export function requestLaunch() {
+	weaponSelectOpen.set(false)
+	gameStatus.set('entering')
+}
+
+/** GameWorld calls this once the entry reveal finishes (the character has fallen into the arena):
+ *  now show the starting-weapon picker. */
+export function openWeaponSelect() {
 	weaponSelectOpen.set(true)
 }
 
-/** Dismiss the picker without starting (e.g. clicking away is not wired, but Quit is). */
+/** Dismiss the picker without starting; bail the reveal back to the portfolio. */
 export function cancelLaunch() {
 	weaponSelectOpen.set(false)
+	if (get(gameStatus) === 'entering') gameStatus.set('idle')
 }
 
 /** Commit the chosen starter and begin the run. */

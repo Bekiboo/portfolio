@@ -33,6 +33,12 @@ const CHARGE_DASH = 16 // charger: dash duration
 const CHARGE_DASH_MULT = 3.4 // charger: speed multiplier during a dash
 const FRAME_W = 48 // sprite-sheet frame size — every character sheet shares this
 const FRAME_H = 80
+// Elite modifier (spawned at wave milestones, see GameWorld): a scaled-up, tankier, harder-hitting
+// version of any kind, marked with a pulsing aura and worth a lot more XP + a guaranteed credit drop.
+export const ELITE_SIZE_MUL = 1.45 // hitbox + sprite scale-up (GameWorld reuses this to place feet on the floor)
+const ELITE_HEALTH_MUL = 6 // HP multiplier — a genuine bullet-sponge beat
+const ELITE_DAMAGE_BONUS = 1 // flat extra contact/shot damage
+const ELITE_XP_MUL = 5 // fat gem reward
 
 // Seven enemy flavours sharing one body, all defined by data in enemyTypes.ts.
 // Movement differs per `behavior`; drawing, hits and animation are shared. (Non-biker
@@ -80,10 +86,12 @@ export class Enemy {
 	turretTargetX = 0
 	perched = false // a wall-flush turret: never rolls (so it can't fall off its perch), just aims/fires inward
 	attackAnim = 0 // frames left showing a gadget's 'attack' animation (drone bomb-drop)
+	elite = false // a milestone miniboss: scaled up, tankier, drawn with an aura (see ELITE_* consts)
+	auraPhase = 0 // pulsing-aura clock for elites (advanced in draw)
 
 	constructor(
 		pos: { x: number; y: number },
-		opts: { speed?: number; kind?: EnemyKind; health?: number; damage?: number } = {}
+		opts: { speed?: number; kind?: EnemyKind; health?: number; damage?: number; elite?: boolean } = {}
 	) {
 		this.kind = opts.kind ?? 'biker'
 		const t = ENEMY_TYPES[this.kind]
@@ -117,6 +125,18 @@ export class Enemy {
 		this.maxHealth = this.health
 		this.damage = opts.damage ?? t.damage
 		this.xpValue = t.xp
+		// Elite: fold the miniboss modifiers over the (already wave-scaled) baselines. Size grows
+		// last so the hitbox/sprite scale together; GameWorld places the feet using ELITE_SIZE_MUL.
+		if (opts.elite) {
+			this.elite = true
+			this.health = Math.round(this.health * ELITE_HEALTH_MUL)
+			this.maxHealth = this.health
+			this.damage += ELITE_DAMAGE_BONUS
+			this.xpValue = Math.round(this.xpValue * ELITE_XP_MUL)
+			this.width = Math.round(this.width * ELITE_SIZE_MUL)
+			this.height = Math.round(this.height * ELITE_SIZE_MUL)
+			this.spriteScale *= ELITE_SIZE_MUL
+		}
 		// Stagger firing kinds so a wave doesn't shoot in unison; randomise the
 		// charger's first dash so a pack doesn't dash as one.
 		if (this.behavior === 'charger') this.dashCd = Math.floor(Math.random() * CHARGE_COOLDOWN)
@@ -421,6 +441,23 @@ export class Enemy {
 		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
 		this.#animate(deltaTime)
 		if (this.hitFlash > 0) this.hitFlash--
+
+		// Elite aura: a pulsing amber halo under the sprite so a miniboss reads at a glance.
+		if (this.elite) {
+			this.auraPhase += deltaTime
+			const cx = x + this.width / 2
+			const cy = y + this.height / 2
+			const r = Math.max(this.width, this.height) * (0.62 + 0.05 * Math.sin(this.auraPhase * 0.08))
+			ctx.save()
+			const g = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r)
+			g.addColorStop(0, 'rgba(245, 158, 11, 0.28)') // amber-500 core
+			g.addColorStop(1, 'rgba(245, 158, 11, 0)')
+			ctx.fillStyle = g
+			ctx.beginPath()
+			ctx.arc(cx, cy, r, 0, Math.PI * 2)
+			ctx.fill()
+			ctx.restore()
+		}
 
 		const scale = this.spriteScale
 		const winding = this.behavior === 'charger' && this.dashState === 'wind'

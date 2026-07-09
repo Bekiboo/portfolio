@@ -1,7 +1,7 @@
 import { get } from 'svelte/store'
 import { Platform } from './Platform'
 import { Player } from './Player'
-import { Enemy } from './Enemy'
+import { Enemy, ELITE_SIZE_MUL } from './Enemy'
 import { XpGem } from './XpGem'
 import { HealthPack } from './HealthPack'
 import { CreditCrate } from './CreditCrate'
@@ -33,6 +33,7 @@ import {
 	addXp,
 	gameOver,
 	stopRun,
+	openWeaponSelect,
 	paused as pausedStore,
 	pauseGame,
 	resumeGame
@@ -87,6 +88,9 @@ const SHOP_SLOTS = 3 // weapon/power offers shown at the intermission shop
 const ITEM_SLOTS = 3 // passive-item offers shown on the shop's second board
 const CREDIT_DROP_CHANCE = 0.08 // chance a slain enemy drops a credit crate (rare)
 const CREDIT_CRATE_VALUE = 5 // credits banked per crate
+const ELITE_WAVE_INTERVAL = 5 // every Nth wave opens with a scaled-up elite miniboss
+const ENTER_REVEAL_MIN_MS = 550 // reveal dwell before the weapon picker (lets the slide-out + fall play)
+const ENTER_REVEAL_MAX_MS = 2200 // hard cap so the picker always opens even if the fall is long
 
 // The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
 // the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
@@ -182,11 +186,23 @@ export class GameWorld {
 	// drawn over the sprites. Kept off the entity pools since they never interact.
 	private shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
 
+	// Floating damage numbers: a tiny text rises + fades over each damaged enemy. Crits show bigger
+	// and amber. Purely visual (like shockRings), aged by frameTime and capped so a big chain can't
+	// grow the array without bound.
+	private damageNumbers: { x: number; y: number; vy: number; t: number; text: string; color: string; size: number }[] = []
+
 	// --- Wave / run timing ---
 	private spawnTimer = 0
 	private spawnSide = 0
 	private invuln = 0
 	private wasPlaying = false
+	// Entry reveal ('entering'): the character falls into the arena from wherever it stood before the
+	// weapon picker opens. wasEntering detects the rising edge; enterTimer counts the reveal; the pick
+	// opens once landed; enteredFromReveal tells the run's rising edge to keep the fallen pose.
+	private wasEntering = false
+	private enterTimer = 0
+	private enterPickShown = false
+	private enteredFromReveal = false
 	private dimAlpha = 0 // eased screen-dim while playing (focus mode)
 	private waveTimer = 0 // ms elapsed in the current wave's combat phase
 	private waveBanner = 0 // ms remaining on the current banner
@@ -279,11 +295,16 @@ export class GameWorld {
 	}
 
 	private collectPlatforms() {
-		const collidingElements = document.querySelectorAll('[data-colliding]')
 		this.platforms = []
-		for (let i = 0; i < collidingElements.length; i++) {
-			const el = collidingElements[i].getBoundingClientRect()
-			this.platforms.push(new Platform(el.width, el.height, el.y, el.x)) // DOM: invisible
+		// Portfolio mode (idle) only: the CV's interactive elements are climbable platforms. Once a
+		// run starts the portfolio is hidden and the arena is PURELY procedural — so we skip the DOM
+		// platforms entirely (they'd also read as zero-rects while hidden anyway).
+		if (get(gameStatus) === 'idle') {
+			const collidingElements = document.querySelectorAll('[data-colliding]')
+			for (let i = 0; i < collidingElements.length; i++) {
+				const el = collidingElements[i].getBoundingClientRect()
+				this.platforms.push(new Platform(el.width, el.height, el.y, el.x)) // DOM: invisible
+			}
 		}
 		for (const p of this.proceduralPlatforms) this.platforms.push(p) // arena: visible ledges
 		this.platformsDirty = false
@@ -368,9 +389,10 @@ export class GameWorld {
 		const def = waveDef(get(wave))
 		this.waveBanner = WAVE_BANNER_MS
 		this.waveBannerLabel = def.label
-		// A themed wave can open with an elite (slow bullet-sponge): a dedicated rift tears
-		// open and strides it out, so even the miniboss beat arrives through a portal.
-		if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
+		// Every Nth wave opens with a true ELITE (scaled-up miniboss, dropped centre-stage). On a
+		// non-milestone wave a themed `eliteAtStart` still trickles a normal miniboss in via a rift.
+		if (get(wave) % ELITE_WAVE_INTERVAL === 0) this.spawnElite(def.eliteAtStart ?? 'brute')
+		else if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
 		this.itemsOnWaveStart() // items may prime themselves at the top of a wave
 	}
 
@@ -425,28 +447,60 @@ export class GameWorld {
 		this.startNextWave()
 	}
 
-	// Is the player standing on the spawn pedestal ([data-spawn], the Start/Stop button)?
-	// Requires both horizontal overlap and feet near the button top, so the player can't
-	// charge the hold from an arena ledge floating above it.
+	// The in-game spawn pedestal: a game-owned pad on the arena floor (bottom-centre), NOT the DOM
+	// Start button anymore (the portfolio is hidden during a run). Anchors the intermission shop,
+	// the return-to-spawn prompt and the launch glow/flash. Canvas-relative, so it follows resizes.
+	private spawnRect() {
+		const w = 96
+		const h = 14
+		return { x: this.canvas.width / 2 - w / 2, top: this.canvas.height - h, width: w, height: h }
+	}
+
+	// Is the player standing on the spawn pad? Horizontal overlap (with a little slack) + feet near
+	// the floor, so the player can't trigger it from an arena ledge floating above the pad.
 	private atSpawn() {
-		const spawnEl = document.querySelector('[data-spawn]')
-		if (!spawnEl) return true // no pedestal in the DOM → don't soft-lock the run
-		const r = spawnEl.getBoundingClientRect()
+		const r = this.spawnRect()
 		const px = this.player.pos.x + this.player.width / 2
 		const feet = this.player.pos.y + this.player.height
-		const nearX = px > r.x - 40 && px < r.x + r.width + 40
-		const nearY = feet > r.top - 90 && feet < r.top + 30
+		const nearX = px > r.x - 50 && px < r.x + r.width + 50
+		const nearY = feet > this.canvas.height - 70
 		return nearX && nearY
+	}
+
+	// Snap the player onto the spawn pad (clean arena entry at run start). Zeroes motion so they
+	// don't inherit velocity from wherever they were standing in the portfolio.
+	private placePlayerAtSpawn() {
+		const r = this.spawnRect()
+		this.player.pos.x = r.x + r.width / 2 - this.player.width / 2
+		this.player.pos.y = this.canvas.height - this.player.height
+		this.player.prevPos.x = this.player.pos.x
+		this.player.prevPos.y = this.player.pos.y
+		this.player.velocity.x = 0
+		this.player.velocity.y = 0
+		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
+	}
+
+	// Draw the spawn pad on the arena floor so the player can always find "home" (where the shop
+	// opens between waves). A rounded slab with a cyan top edge; the glow/flash layer over it.
+	private drawSpawnPad() {
+		const r = this.spawnRect()
+		const ctx = this.ctx
+		ctx.save()
+		ctx.fillStyle = 'rgba(15, 23, 42, 0.9)' // slate-900 slab
+		ctx.beginPath()
+		ctx.roundRect(r.x, r.top, r.width, r.height, 5)
+		ctx.fill()
+		ctx.fillStyle = 'rgba(103, 232, 249, 0.85)' // cyan-300 top lip
+		ctx.fillRect(r.x + 4, r.top, r.width - 8, 2)
+		ctx.restore()
 	}
 
 	// Pulsing "come here" glow over the spawn pedestal during the rest, tightening and
 	// brightening as the hold charges. Drawn on the canvas so it sits on the focus veil.
 	private drawSpawnGlow() {
-		const spawnEl = document.querySelector('[data-spawn]')
-		if (!spawnEl) return
-		const r = spawnEl.getBoundingClientRect()
+		const r = this.spawnRect()
 		const cx = r.x + r.width / 2
-		const cy = r.y + r.height / 2
+		const cy = r.top + r.height / 2
 		const p = this.spawnDwell / SPAWN_DWELL_MS
 		const pulse = 0.5 + 0.5 * Math.sin(this.promptTick * 0.12)
 		const intensity = 0.35 + 0.65 * p // dim call-to-action → full charge
@@ -464,11 +518,9 @@ export class GameWorld {
 
 	// Bright expanding burst over the pedestal at the instant the hold completes.
 	private drawSpawnFlash() {
-		const spawnEl = document.querySelector('[data-spawn]')
-		if (!spawnEl) return
-		const r = spawnEl.getBoundingClientRect()
+		const r = this.spawnRect()
 		const cx = r.x + r.width / 2
-		const cy = r.y + r.height / 2
+		const cy = r.top + r.height / 2
 		const t = this.spawnFlash / SPAWN_FLASH_MS // 1 → 0
 		const base = Math.max(r.width, r.height)
 		const radius = base * (0.6 + (1 - t) * 2.6)
@@ -538,6 +590,7 @@ export class GameWorld {
 		this.player.slamming = false
 		this.player.power?.reset()
 		this.shockRings.length = 0
+		this.damageNumbers.length = 0
 		// Drop any held passive items (a fresh run starts with none; their stat effects were folded
 		// into the baseline stats reset above, so clearing the list is enough).
 		this.items.length = 0
@@ -857,14 +910,31 @@ export class GameWorld {
 
 	// Build a wave-scaled Enemy of `kind` at (x, y). Shared by the rift emitter and the direct
 	// turret spawn so toughness/speed ramps stay in one place.
-	private makeEnemy(kind: EnemyKind, x: number, y: number): Enemy {
+	private makeEnemy(kind: EnemyKind, x: number, y: number, elite = false): Enemy {
 		const w = get(wave)
 		const t = ENEMY_TYPES[kind]
 		const speed = t.waveSpeedMul != null ? waveEnemySpeed(w) * t.waveSpeedMul : t.speed
 		return new Enemy(
 			{ x, y },
-			{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
+			{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w), elite }
 		)
+	}
+
+	// Spawn a single ELITE of `kind` at wave milestones (see startNextWave): a scaled-up miniboss
+	// dropped centre-stage with a burst + shock ring, rather than trickled in through a rift. Ground
+	// kinds get their feet on the floor (using the elite size-up); air kinds hang in the band.
+	private spawnElite(kind: EnemyKind) {
+		const t = ENEMY_TYPES[kind]
+		const eh = t.height * ELITE_SIZE_MUL
+		const ew = t.width * ELITE_SIZE_MUL
+		const x = this.canvas.width / 2 - ew / 2
+		const y =
+			t.spawnY === 'air' ? this.canvas.height * (t.altitude ?? 0.32) : this.canvas.height - eh - 2
+		enemiesStore.add(this.makeEnemy(kind, x, y, true))
+		const cx = x + ew / 2
+		const cy = y + eh / 2
+		this.shockRings.push({ x: cx, y: cy, max: Math.max(ew, eh) * 1.6, t: 1, color: '#f59e0b' })
+		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
 	}
 
 	// A rift released a unit: drop it into the world at the rift's mouth (centred for air,
@@ -1011,7 +1081,49 @@ export class GameWorld {
 			const nx = (ex - cx) / (d || 1)
 			enemy.pos.x += nx * knockback
 			enemy.pos.y -= knockback * 0.3 // a little upward pop for feel
-			if (damage > 0 && enemy.hit(damage)) this.onEnemyKilled(enemy)
+			if (damage > 0) {
+				this.spawnDamageNumber(ex, enemy.pos.y, damage, false)
+				if (enemy.hit(damage)) this.onEnemyKilled(enemy)
+			}
+		}
+	}
+
+	// Pop a floating damage number over (x, y). Crits read bigger + amber. Capped at 60 live numbers
+	// so a big explosive chain can't balloon the array.
+	private spawnDamageNumber(x: number, y: number, amount: number, crit = false) {
+		if (this.damageNumbers.length >= 60) this.damageNumbers.shift()
+		this.damageNumbers.push({
+			x: x + (Math.random() - 0.5) * 14,
+			y,
+			vy: -0.6,
+			t: 1,
+			text: `${amount}`,
+			color: crit ? '#fbbf24' : '#e2e8f0', // amber-400 / slate-200
+			size: crit ? 20 : 13
+		})
+	}
+
+	// Age and draw the floating damage numbers (rise + fade over ~0.7s). Over everything, like rings.
+	private drawDamageNumbers(frameTime: number) {
+		for (let i = this.damageNumbers.length - 1; i >= 0; i--) {
+			const d = this.damageNumbers[i]
+			d.t -= frameTime / 700
+			d.y += (d.vy * frameTime) / 16
+			if (d.t <= 0) {
+				this.damageNumbers.splice(i, 1)
+				continue
+			}
+			this.ctx.save()
+			this.ctx.globalAlpha = Math.max(0, Math.min(1, d.t * 1.4))
+			this.ctx.fillStyle = d.color
+			this.ctx.font = `700 ${d.size}px ui-monospace, monospace`
+			this.ctx.textAlign = 'center'
+			this.ctx.textBaseline = 'middle'
+			this.ctx.lineWidth = 3
+			this.ctx.strokeStyle = 'rgba(2, 6, 23, 0.7)' // slate-950 outline for legibility over sprites
+			this.ctx.strokeText(d.text, d.x, d.y)
+			this.ctx.fillText(d.text, d.x, d.y)
+			this.ctx.restore()
 		}
 	}
 
@@ -1064,8 +1176,18 @@ export class GameWorld {
 				new HealthPack({ x: enemy.pos.x + enemy.width / 2 - 9, y: enemy.pos.y + enemy.height / 2 })
 			)
 		}
+		// An elite always drops a fat credit crate (its whole point as a milestone reward), on top of
+		// its big gem — so clearing one meaningfully funds the next shop.
+		if (enemy.elite) {
+			creditCratesStore.add(
+				new CreditCrate(
+					{ x: enemy.pos.x + enemy.width / 2 - 10, y: enemy.pos.y + enemy.height / 2 },
+					{ value: CREDIT_CRATE_VALUE * 3 }
+				)
+			)
+		}
 		// Rare credit crate — the shop currency (banked on walk-over, spent at the intermission).
-		if (Math.random() < CREDIT_DROP_CHANCE * luckMul) {
+		else if (Math.random() < CREDIT_DROP_CHANCE * luckMul) {
 			creditCratesStore.add(
 				new CreditCrate(
 					{ x: enemy.pos.x + enemy.width / 2 - 10, y: enemy.pos.y + enemy.height / 2 },
@@ -1105,7 +1227,9 @@ export class GameWorld {
 					// roll for CRIT_MULT×. A killing bolt drops XP (tumbles under gravity, so the
 					// player must leave a safe perch to bank it) and, while hurt, maybe a med-kit.
 					let dmg = projectile.damage + this.bonusDamage
+					let crit = false
 					if (this.critChance > 0 && Math.random() < this.critChance) {
+						crit = true
 						dmg = Math.round(dmg * CRIT_MULT)
 						effectsStore.add(
 							new Effect(
@@ -1115,6 +1239,7 @@ export class GameWorld {
 							)
 						)
 					}
+					this.spawnDamageNumber(enemy.pos.x + enemy.width / 2, enemy.pos.y, dmg, crit)
 					if (enemy.hit(dmg)) this.onEnemyKilled(enemy)
 					else this.itemsOnHit(enemy, dmg) // a survivor was struck (items may react)
 					this.tryLifeSteal() // a connecting bolt may heal (Life Steal stat)
@@ -1340,10 +1465,40 @@ export class GameWorld {
 		if (this.canvasDirty) this.resizeCanvas()
 		if (this.platformsDirty) this.collectPlatforms()
 
-		const playing = get(gameStatus) === 'playing'
+		const status = get(gameStatus)
+		const playing = status === 'playing'
+		const entering = status === 'entering'
 
-		// On the rising edge of a run, clear the field and reset upgrades. The player
-		// keeps its current position — no teleport onto the pedestal.
+		// Rising edge of the reveal (idle/over → entering): build the arena the character will fall
+		// INTO, clear any stale field, and let gravity carry it down from wherever it stood (the DOM
+		// platforms drop out of collectPlatforms as soon as we leave 'idle', so it falls through the
+		// page into the arena). NO teleport. The weapon picker opens below once it has landed.
+		if (entering && !this.wasEntering) {
+			enemiesStore.clear()
+			projectilesStore.clear()
+			xpGemsStore.clear()
+			bombsStore.clear()
+			healthPacksStore.clear()
+			creditCratesStore.clear()
+			portalsStore.clear()
+			this.shopOpen = false
+			this.intermission = false
+			this.spawnDwell = 0
+			this.spawnFlash = 0
+			this.shockRings.length = 0
+			this.damageNumbers.length = 0
+			this.pendingPlatforms = []
+			this.proceduralPlatforms = this.buildLayout() // the arena the character drops into
+			this.platformsDirty = true // fold in the ledges + drop the DOM platforms so it falls
+			this.enterTimer = 0
+			this.enterPickShown = false
+			this.enteredFromReveal = true // the coming run keeps the fallen pose (no spawn-pad snap)
+		}
+		this.wasEntering = entering
+
+		// On the rising edge of a run, reset the run state. When the run was reached through the reveal
+		// the arena + the player's position were already established (it fell in), so we DON'T rebuild
+		// the layout or snap it onto the pad — it keeps wherever it landed.
 		if (playing && !this.wasPlaying) {
 			enemiesStore.clear()
 			projectilesStore.clear()
@@ -1367,6 +1522,7 @@ export class GameWorld {
 			this.shopOffers = []
 			this.itemOffers = []
 			this.shockRings.length = 0
+			this.damageNumbers.length = 0
 			keys.power = false
 			this.spawnTimer = 0
 			this.invuln = 0
@@ -1374,9 +1530,15 @@ export class GameWorld {
 			this.intermission = false
 			this.spawnDwell = 0
 			this.spawnFlash = 0
-			this.pendingPlatforms = []
-			this.proceduralPlatforms = this.buildLayout() // fresh arena for wave 1
-			this.platformsDirty = true
+			// The reveal already built the wave-1 arena and let the character fall in, so keep both.
+			// The fallback (a run started without a reveal — shouldn't happen) rebuilds + snaps in.
+			if (!this.enteredFromReveal || this.proceduralPlatforms.length === 0) {
+				this.pendingPlatforms = []
+				this.proceduralPlatforms = this.buildLayout() // fresh arena for wave 1
+				this.platformsDirty = true
+				this.placePlayerAtSpawn()
+			}
+			this.enteredFromReveal = false
 			// Open on the wave-1 theme banner so the first encounter is announced too.
 			this.waveBanner = WAVE_BANNER_MS
 			this.waveBannerLabel = waveDef(get(wave)).label
@@ -1417,6 +1579,20 @@ export class GameWorld {
 					}
 				}
 			}
+		} else if (entering) {
+			// Reveal in progress: no spawns/combat yet — just let the character fall in (its update
+			// runs in the fixed-step block below). Open the weapon picker once it has landed, or after
+			// a hard cap so a long fall never leaves the reveal hanging.
+			this.enterTimer += frameTime
+			const landed = !this.player.isFalling
+			if (
+				!this.enterPickShown &&
+				(this.enterTimer >= ENTER_REVEAL_MAX_MS ||
+					(this.enterTimer >= ENTER_REVEAL_MIN_MS && landed))
+			) {
+				this.enterPickShown = true
+				openWeaponSelect()
+			}
 		} else if (!playing) {
 			if (enemiesStore.list.length) enemiesStore.clear()
 			if (projectilesStore.list.length) projectilesStore.clear()
@@ -1439,6 +1615,7 @@ export class GameWorld {
 			this.spawnDwell = 0
 			this.spawnFlash = 0
 			if (this.shockRings.length) this.shockRings.length = 0
+			if (this.damageNumbers.length) this.damageNumbers.length = 0
 			keys.power = false
 		}
 
@@ -1509,19 +1686,29 @@ export class GameWorld {
 
 		// Render once per frame, interpolating entities between their last two steps.
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-		// Focus mode: ease a dark veil over the page behind the sprites while playing.
-		this.dimAlpha += ((playing ? 0.5 : 0) - this.dimAlpha) * 0.12
+		// Arena backdrop: a run HIDES the portfolio (see +layout), so fill an opaque arena behind the
+		// sprites while playing, eased in/out so idle↔play crossfades. At idle it stays transparent —
+		// the CV shows through and the player climbs the page (portfolio mode). Replaces the old
+		// focus-veil-with-holes now that there's no CV to selectively reveal.
+		// Hold the backdrop up through the game-over screen too (portfolio stays hidden until idle),
+		// so the death card sits in the arena rather than dissolving back to the page.
+		this.dimAlpha += ((get(gameStatus) !== 'idle' ? 1 : 0) - this.dimAlpha) * 0.12
 		if (this.dimAlpha > 0.01) {
-			this.ctx.fillStyle = `rgba(2, 6, 23, ${this.dimAlpha})`
+			this.ctx.save()
+			this.ctx.globalAlpha = Math.min(1, this.dimAlpha)
+			const g = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height)
+			g.addColorStop(0, '#0b1120') // slate-950-ish top
+			g.addColorStop(1, '#05070e') // darker toward the floor
+			this.ctx.fillStyle = g
 			this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
-			// Keep the interactive platforms (section titles, buttons) at full
-			// brightness by punching the veil out over their rects — only the
-			// surrounding CV dims. Skip the procedural ledges: there's no CV under them,
-			// so clearing would show a bright hole instead — they draw over the veil.
-			for (const p of this.platforms)
-				if (!p.visible) this.ctx.clearRect(p.left, p.top, p.width, p.height)
+			this.ctx.fillStyle = 'rgba(148, 163, 184, 0.05)' // faint floor band
+			this.ctx.fillRect(0, this.canvas.height - 46, this.canvas.width, 46)
+			this.ctx.restore()
 		}
 		for (const platform of this.platforms) platform.draw(this.ctx)
+		// The in-game spawn pad (home base for the intermission shop), on the floor under the sprites.
+		// Shown during the reveal too, so the arena reads as "home" as the character drops in.
+		if (playing || entering) this.drawSpawnPad()
 		// The next wave's ledges fade in over the hold (render-only until promoted).
 		if (playing && this.intermission)
 			for (const pf of this.pendingPlatforms) pf.draw(this.ctx)
@@ -1548,6 +1735,8 @@ export class GameWorld {
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
 		// Nova / slam blast rings, over everything (age out even if the run just ended).
 		this.drawShockRings(frameTime)
+		// Floating damage numbers, topmost so they read over sprites and rings alike.
+		this.drawDamageNumbers(frameTime)
 
 		if (playing) {
 			drawHud(this.ctx, this.canvas)
