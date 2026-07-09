@@ -78,7 +78,6 @@ export function waveDef(w: number): WaveDef {
 // Thin per-wave accessors the director reads (kept as functions so GameWorld's call sites
 // are unchanged from the old continuous curve).
 export const waveSpawnInterval = (w: number) => waveDef(w).interval
-export const waveEnemyCap = (w: number) => waveDef(w).cap
 export const waveEnemySpeed = (w: number) => BASE_ADVANCE * waveDef(w).speedMul
 
 // Toughness: per-kind base HP + 1 for every 3 waves cleared.

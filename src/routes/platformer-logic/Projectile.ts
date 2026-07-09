@@ -1,4 +1,4 @@
-import { collision, getSprite } from './utils'
+import { collision, getSprite, lerpPos } from './utils'
 import { projectilesStore } from '$lib/stores'
 import type { Platform } from './Platform'
 
@@ -10,11 +10,7 @@ export class Projectile {
 	width: number
 	speed: number
 	image!: HTMLImageElement
-	maxFrame!: number
-	frame = 0
-	ticksPerFrame!: number
-	ticksCount = 0
-	sprite!: string
+	ticksCount = 0 // physics steps alive, for the lifetime cap
 	hostile = false // enemy shot (damages the player) vs player bolt (damages enemies)
 	damage = 1 // HP removed from an enemy on hit (player bolts; raised by Power Shot)
 
@@ -26,11 +22,10 @@ export class Projectile {
 	) {
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
-		this.image = getSprite('projectile', sprite).img
-		this.ticksPerFrame = getSprite('projectile', sprite).speed || 5
-		this.maxFrame = getSprite('projectile', sprite).frames || 0
-		this.height = getSprite('projectile', sprite).height || 80
-		this.width = getSprite('projectile', sprite).width || 48
+		const s = getSprite('projectile', sprite)
+		this.image = s.img
+		this.height = s.height || 80
+		this.width = s.width || 48
 		this.speed = opts.speed ?? 12
 		this.angle = angle
 		this.hostile = opts.hostile ?? false
@@ -39,9 +34,6 @@ export class Projectile {
 		if (this.hostile) {
 			this.width = 12
 			this.height = 12
-		}
-		if (this.frame > this.maxFrame) {
-			this.frame = 0
 		}
 	}
 
@@ -60,8 +52,7 @@ export class Projectile {
 	}
 
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
-		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		const { x, y } = lerpPos(this, alpha)
 
 		// Enemy shots: a small glowing orb, visually distinct from the player's bolts.
 		if (this.hostile) {
@@ -95,9 +86,6 @@ export class Projectile {
 			this.height * 2
 		)
 		ctx.restore()
-
-		// ctx.strokeStyle = 'white'
-		// ctx.strokeRect(this.pos.x, this.pos.y, this.width, this.height)
 	}
 
 	#checkCollision(platforms: Platform[]) {

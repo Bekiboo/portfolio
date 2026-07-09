@@ -1,9 +1,8 @@
-import { collision, type Bounds } from './utils'
+import { collision, GRAVITY, lerpPos, type Bounds } from './utils'
 import { bombsStore, effectsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import type { Platform } from './Platform'
 
-const GRAVITY = 0.33 // matches the world gravity used by Player/Enemy/XpGem
 const MAX_AIRTIME = 240 // safety: a bomb that somehow never lands still detonates (~4s)
 const BLAST_STEPS = 14 // physics steps the explosion ring is drawn before cleanup
 
@@ -109,8 +108,9 @@ export class Bomb {
 			ctx.restore()
 			return
 		}
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha + this.width / 2
-		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha + this.height / 2
+		const p = lerpPos(this, alpha)
+		const x = p.x + this.width / 2
+		const y = p.y + this.height / 2
 		ctx.save()
 		// A high-contrast warning read: a pulsing outer ring makes the incoming bomb easy
 		// to track over the busy CV, and a bright warm body (not the old dark-gray casing)

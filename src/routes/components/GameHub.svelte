@@ -27,16 +27,17 @@
 			<div class="text-xs tracking-widest uppercase">Fire — automatic</div>
 		</div>
 
-	<button
+	<!-- Fixed width so the pedestal (data-spawn platform) stays a constant size whether it reads
+	     START or STOP, and a little wider than the label needs. data-spawn/data-colliding land on
+	     the real <button> (read by the engine); the label swaps with the run state. -->
+	<Button
+		text={$gameStatus === 'playing' ? 'STOP' : 'START'}
+		classes="uppercase w-36"
 		data-colliding
 		data-spawn
 		onclick={toggle}
 		aria-label={$gameStatus === 'playing' ? 'Pause the game' : 'Start the game'}
-	>
-		<!-- Fixed width so the pedestal (data-spawn platform) stays a constant size whether
-		     it reads START or STOP, and a little wider than the label needs. -->
-		<Button text={$gameStatus === 'playing' ? 'STOP' : 'START'} classes="uppercase w-36" />
-	</button>
+	/>
 </div>
 
 <style>

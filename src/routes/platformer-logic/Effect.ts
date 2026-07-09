@@ -5,13 +5,11 @@ export class Effect {
 	pos: { x: number; y: number }
 	height: number
 	width: number
-	speed: number
 	image!: HTMLImageElement
 	maxFrame!: number
 	frame = 0
 	ticksPerFrame!: number
 	ticksCount = 0
-	animation!: string
 	centered: boolean
 
 	constructor(
@@ -21,12 +19,12 @@ export class Effect {
 	) {
 		this.centered = opts.centered ?? false
 		this.pos = pos
-		this.image = getSprite('effect', animation).img
-		this.ticksPerFrame = getSprite('effect', animation).speed || 5
-		this.maxFrame = getSprite('effect', animation).frames || 0
-		this.height = getSprite('effect', animation).height || 96
-		this.width = getSprite('effect', animation).width || 48
-		this.speed = 6
+		const s = getSprite('effect', animation)
+		this.image = s.img
+		this.ticksPerFrame = s.speed || 5
+		this.maxFrame = s.frames || 0
+		this.height = s.height || 96
+		this.width = s.width || 48
 		if (this.frame > this.maxFrame) {
 			this.frame = 0
 		}

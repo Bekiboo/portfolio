@@ -65,9 +65,12 @@
 				XP <span class="text-emerald-400">{$xp}</span>
 			</div>
 			<div class="mt-4 flex flex-col items-center gap-2">
-				<button onclick={requestLaunch} aria-label="Restart the game">
-					<Button text="RESTART" classes="uppercase" />
-				</button>
+				<Button
+					text="RESTART"
+					classes="uppercase"
+					onclick={requestLaunch}
+					aria-label="Restart the game"
+				/>
 				<button
 					onclick={stopRun}
 					class="text-xs tracking-widest text-slate-500 uppercase transition hover:text-slate-300"
@@ -92,9 +95,12 @@
 				SCORE <span class="text-blue-400">{$score}</span>
 			</div>
 			<div class="mt-5 flex flex-col items-center gap-2">
-				<button onclick={resumeGame} aria-label="Resume the game">
-					<Button text="CONTINUER" classes="uppercase" />
-				</button>
+				<Button
+					text="CONTINUER"
+					classes="uppercase"
+					onclick={resumeGame}
+					aria-label="Resume the game"
+				/>
 				<button
 					onclick={stopRun}
 					class="text-xs tracking-widest text-slate-500 uppercase transition hover:text-slate-300"
@@ -228,9 +234,12 @@
 					</div>
 				{/if}
 			</div>
-			<button onclick={() => world.launchFromShop()} class="mt-4 w-full" aria-label="Lancer la vague">
-				<Button text="LANCER LA VAGUE ▶" classes="uppercase w-full" />
-			</button>
+			<Button
+				text="LANCER LA VAGUE ▶"
+				classes="uppercase w-full mt-4"
+				onclick={() => world.launchFromShop()}
+				aria-label="Lancer la vague"
+			/>
 			<div class="mt-3 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
 				1 · 2 · 3 armes · 4 · 5 · 6 objets · Entrée lance
 			</div>

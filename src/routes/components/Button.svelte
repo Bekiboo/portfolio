@@ -1,8 +1,11 @@
 <script lang="ts">
-	let { text, classes } = $props()
+	// `rest` forwards onclick / aria-label / data-* onto the real <button>, so callers render a
+	// single <Button …/> instead of wrapping it in their own <button> (which nested a button inside
+	// a button — invalid HTML that broke keyboard focus).
+	let { text, classes, ...rest } = $props()
 </script>
 
-<button class={classes}>
+<button class={classes} {...rest}>
 	<span>{text}</span>
 	<helper-1 classname="jsx-3254698753"></helper-1>
 	<shine></shine>
@@ -158,19 +161,6 @@
 			box-shadow: 0 0 0 150px var(--ripple-color);
 			opacity: 0;
 		}
-	}
-
-	button:after {
-		content: '';
-		position: absolute;
-		height: 6px;
-		width: 22px;
-		background: var(--background-color);
-		clip-path: polygon(5px 0%, calc(100% - 5px) 0%, 100% 100%, 0% 100%);
-		transform: rotate(135deg);
-		bottom: 3px;
-		right: -5px;
-		box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.5);
 	}
 
 	@keyframes shine {

@@ -1,4 +1,4 @@
-import { collision, getSprite, hasSprite, type Bounds } from './utils'
+import { collision, getSprite, hasSprite, GRAVITY, lerpPos, type Bounds } from './utils'
 import { effectsStore, enemiesStore, projectilesStore, bombsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import { Projectile } from './Projectile'
@@ -9,7 +9,6 @@ import type { Player } from './Player'
 
 export type { EnemyKind } from './enemyTypes'
 
-const GRAVITY = 0.33
 const DEADZONE = 8 // px around the target where the enemy stops nudging (kills the left/right vibration)
 const SEPARATION_GAP = 34 // enemies closer than this get pushed apart so they don't stack into one blob
 const SEPARATION_PUSH = 0.6 // how hard overlapping neighbours shove each other per step
@@ -437,8 +436,7 @@ export class Enemy {
 	}
 
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
-		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		const { x, y } = lerpPos(this, alpha)
 		this.#animate(deltaTime)
 		if (this.hitFlash > 0) this.hitFlash--
 

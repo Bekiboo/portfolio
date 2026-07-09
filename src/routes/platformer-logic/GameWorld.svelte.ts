@@ -1,13 +1,10 @@
 import { get } from 'svelte/store'
 import { Platform } from './Platform'
 import { Player } from './Player'
-import { Enemy, ELITE_SIZE_MUL } from './Enemy'
-import { XpGem } from './XpGem'
-import { HealthPack } from './HealthPack'
-import { CreditCrate } from './CreditCrate'
+import { Enemy } from './Enemy'
 import { Effect } from './Effect'
-import { Portal, type PortalPlacement } from './Portal'
-import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
+import { SpawnDirector } from './SpawnDirector'
+import { CombatResolver } from './CombatResolver'
 import { CHARACTERS } from './characters'
 import {
 	effectsStore,
@@ -19,7 +16,6 @@ import {
 	creditCratesStore,
 	portalsStore
 } from '$lib/stores'
-import { collision } from './utils'
 import { keys } from './controller'
 import {
 	gameStatus,
@@ -30,24 +26,13 @@ import {
 	level,
 	credits,
 	startingWeapon,
-	addXp,
-	gameOver,
 	stopRun,
 	openWeaponSelect,
 	paused as pausedStore,
 	pauseGame,
 	resumeGame
 } from '$lib/game'
-import {
-	waveDuration,
-	waveDef,
-	waveSpawnInterval,
-	waveEnemyCap,
-	waveEnemySpeed,
-	waveEnemyHealth,
-	waveContactDamage,
-	type WaveDef
-} from './waves'
+import { waveDuration, waveDef, waveSpawnInterval } from './waves'
 import { drawHud, drawPowerHud, drawWaveBanner, drawIntermissionPrompt, WAVE_BANNER_MS } from './hud'
 import { nearestEnemy } from './los'
 import type { Power } from './Power'
@@ -57,7 +42,6 @@ import {
 	powerChoices,
 	rollShopOffers,
 	type ShopOffer,
-	CRIT_MULT,
 	MIN_FIRE_STEPS,
 	BASE_INVULN,
 	BASE_MAGNET,
@@ -76,18 +60,13 @@ import { ItemInstance, rollItemOffers, type ItemType, type ItemOffer } from './i
 const FIXED_STEP = 1000 / 60 // physics tick length (ms)
 const STEP_DELTA = FIXED_STEP / 12 // delta unit expected by the entities
 const MAX_FRAME_TIME = 100 // clamp accumulated time to avoid a spiral after the tab was hidden
-const SHIELD_FLASH_STEPS = 12 // steps the shield break/absorb ring is drawn
 const SPAWN_DWELL_MS = 1500 // how long the player must hold the spawn pedestal to launch the next wave
 const SPAWN_FLASH_MS = 260 // spawn burst when the hold completes and the wave triggers
 const INTERMISSION_MAGNET_MUL = 10 // pickup-radius boost during the rest so leftover gems get swept in
-const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns clustered and legible
-const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
 const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
 const POWER_MILESTONE_LEVEL = 5 // reaching this level grants a special power on the S key (another special pick)
 const SHOP_SLOTS = 3 // weapon/power offers shown at the intermission shop
 const ITEM_SLOTS = 3 // passive-item offers shown on the shop's second board
-const CREDIT_DROP_CHANCE = 0.08 // chance a slain enemy drops a credit crate (rare)
-const CREDIT_CRATE_VALUE = 5 // credits banked per crate
 const ELITE_WAVE_INTERVAL = 5 // every Nth wave opens with a scaled-up elite miniboss
 const ENTER_REVEAL_MIN_MS = 550 // reveal dwell before the weapon picker (lets the slide-out + fall play)
 const ENTER_REVEAL_MAX_MS = 2200 // hard cap so the picker always opens even if the fall is long
@@ -130,8 +109,15 @@ const BG_IMG_H = 324
 export class GameWorld {
 	// --- Rendering context (set on mount) ---
 	private canvas!: HTMLCanvasElement
-	private ctx!: CanvasRenderingContext2D
+	ctx!: CanvasRenderingContext2D
 	player!: Player
+	// Two subsystems split out of this god-object, each holding a back-reference to it: the spawn
+	// director (what/where to spawn, portal driving) and the combat resolver (hits, kills + drops,
+	// shield, damage-number/shock-ring FX). Both read this world's shared run state via `this`; the
+	// upgrade stats they consume still live here (mutated by upgrades.ts). See SpawnDirector /
+	// CombatResolver. GameWorld still drives the player's weapons + powers itself.
+	private director = new SpawnDirector(this)
+	private combat = new CombatResolver(this)
 
 	// --- Timestep bookkeeping ---
 	private lastTime = 0
@@ -147,7 +133,7 @@ export class GameWorld {
 	// Procedural arena ledges: a fresh random layout is generated each wave (a new set at
 	// run start and at every intermission), giving the player extra terrain that changes
 	// every wave. Merged into `platforms` by collectPlatforms(); rendered (visible=true).
-	private proceduralPlatforms: Platform[] = []
+	proceduralPlatforms: Platform[] = []
 	// The next wave's ledges, pre-built at intermission and faded in (render-only, not yet
 	// collidable) as the old set fades out over the spawn dwell; promoted on hold-complete.
 	private pendingPlatforms: Platform[] = []
@@ -179,9 +165,9 @@ export class GameWorld {
 	shieldMax = BASE_SHIELD_MAX // charges when full (Bulwark raises it)
 	shieldCharges = BASE_SHIELD_MAX // current charges (each absorbs one hit)
 	shieldRegenSteps = BASE_SHIELD_REGEN // steps to regen one charge (Recharge lowers it)
-	private shieldRegenTimer = 0 // steps since the last hit / last regen tick
-	private shieldFlash = 0 // steps left on the break/absorb ring VFX
-	private shieldFlashBig = false // was the last flash a full break (bigger ring)?
+	shieldRegenTimer = 0 // steps since the last hit / last regen tick (read/written by CombatResolver)
+	shieldFlash = 0 // steps left on the break/absorb ring VFX
+	shieldFlashBig = false // was the last flash a full break (bigger ring)?
 
 	// --- Level-up pick state (read by the Svelte template, hence reactive) ---
 	// gameStatus stays 'playing' during the pick (so the field isn't cleared); these
@@ -214,22 +200,21 @@ export class GameWorld {
 
 	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime and
 	// drawn over the sprites. Kept off the entity pools since they never interact.
-	private shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
+	shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
 
 	// Floating damage numbers: a tiny text rises + fades over each damaged enemy. Crits show bigger
 	// and amber. Purely visual (like shockRings), aged by frameTime and capped so a big chain can't
 	// grow the array without bound.
-	private damageNumbers: { x: number; y: number; vy: number; t: number; text: string; color: string; size: number }[] = []
+	damageNumbers: { x: number; y: number; vy: number; t: number; text: string; color: string; size: number }[] = []
 
 	// --- Wave / run timing ---
 	private spawnTimer = 0
-	private spawnSide = 0
-	private invuln = 0
+	invuln = 0 // i-frame countdown; shared by CombatResolver (grants/reads) and the loop (ticks it)
 	private wasPlaying = false
 	// The playfield is a WORLD larger than the viewport (recomputed on resize); entities are confined
 	// to this rather than the canvas. The camera scrolls the viewport around it, behind a parallax
 	// skyline. cameraX/Y are the viewport's top-left in world space (0,0 = portfolio mode).
-	private world = { width: 0, height: 0 }
+	world = { width: 0, height: 0 }
 	// The on-screen view: viewScale is device px per world unit (so Cmd +/- only rescales); viewW/viewH
 	// are the world units visible (viewH fixed = VIEW_H, viewW follows aspect). Used for the camera,
 	// parallax and HUD (all view-space), while entities live in the full `world`.
@@ -278,13 +263,22 @@ export class GameWorld {
 		// Stop the loop so remounting (e.g. crossing the 1024px breakpoint) doesn't
 		// stack multiple animation loops.
 		if (this.rafId !== null) cancelAnimationFrame(this.rafId)
-		enemiesStore.clear()
-		projectilesStore.clear()
-		xpGemsStore.clear()
-		bombsStore.clear()
-		healthPacksStore.clear()
-		creditCratesStore.clear()
-		portalsStore.clear()
+		this.clearAllPools()
+	}
+
+	// Empty every entity pool (enemies, projectiles, the three pickups, portals) in one call.
+	// Guarded per-store so it's cheap to call every idle frame — a store only fires its reactive
+	// update when it actually had contents. Used on destroy, on the rising edge of a reveal/run,
+	// and while idle to keep the home screen clear. (The intermission swap in enterIntermission
+	// clears only a subset, so it keeps its own inline block.)
+	private clearAllPools() {
+		if (enemiesStore.list.length) enemiesStore.clear()
+		if (projectilesStore.list.length) projectilesStore.clear()
+		if (xpGemsStore.list.length) xpGemsStore.clear()
+		if (bombsStore.list.length) bombsStore.clear()
+		if (healthPacksStore.list.length) healthPacksStore.clear()
+		if (creditCratesStore.list.length) creditCratesStore.clear()
+		if (portalsStore.list.length) portalsStore.clear()
 	}
 
 	// --- Input ----------------------------------------------------------------
@@ -451,8 +445,8 @@ export class GameWorld {
 		this.waveBannerLabel = def.label
 		// Every Nth wave opens with a true ELITE (scaled-up miniboss, dropped centre-stage). On a
 		// non-milestone wave a themed `eliteAtStart` still trickles a normal miniboss in via a rift.
-		if (get(wave) % ELITE_WAVE_INTERVAL === 0) this.spawnElite(def.eliteAtStart ?? 'brute')
-		else if (def.eliteAtStart) this.openPortalsForBatch([def.eliteAtStart])
+		if (get(wave) % ELITE_WAVE_INTERVAL === 0) this.director.spawnElite(def.eliteAtStart ?? 'brute')
+		else if (def.eliteAtStart) this.director.openPortalsForBatch([def.eliteAtStart])
 		this.itemsOnWaveStart() // items may prime themselves at the top of a wave
 	}
 
@@ -709,7 +703,8 @@ export class GameWorld {
 	}
 
 	// Queue the level-ups earned this step; open the modal on the first one.
-	private queueLevelUps(n: number) {
+	// Called by CombatResolver when a banked gem crosses a level threshold, hence non-private.
+	queueLevelUps(n: number) {
 		this.pendingLevelUps += n
 		if (!this.levelUpOpen) {
 			this.openPick()
@@ -759,13 +754,14 @@ export class GameWorld {
 	// Hook fan-out: each held item may subscribe to these combat/lifecycle seams. Kept as thin loops
 	// so a new item is a data entry in items.ts, never an engine edit here. onKill can re-enter (an
 	// item's blast kills more), which is fine — shockwave/resolveHits skip already-dead enemies.
-	private itemsOnKill(enemy: Enemy) {
+	// Fanned out by CombatResolver at the kill / hit / damage-taken seams, so left non-private.
+	itemsOnKill(enemy: Enemy) {
 		for (const it of this.items) it.type.onKill?.(this, enemy, it)
 	}
-	private itemsOnHit(enemy: Enemy, dmg: number) {
+	itemsOnHit(enemy: Enemy, dmg: number) {
 		for (const it of this.items) it.type.onHit?.(this, enemy, dmg, it)
 	}
-	private itemsOnDamaged(amount: number) {
+	itemsOnDamaged(amount: number) {
 		for (const it of this.items) it.type.onDamaged?.(this, amount, it)
 	}
 	private itemsOnWaveStart() {
@@ -776,254 +772,6 @@ export class GameWorld {
 	}
 	private itemsDraw(alpha: number) {
 		for (const it of this.items) it.type.onDraw?.(this, this.ctx, alpha, it)
-	}
-
-	// --- Spawn director -------------------------------------------------------
-	// A wall-flush perch ledge with no turret currently riding it (so two turrets don't
-	// stack on the same edge). null if every perch is taken or the layout has none.
-	private freeEdgePerch(): Platform | null {
-		const perches = this.proceduralPlatforms.filter((p) => p.edge)
-		const free = perches.filter(
-			(p) =>
-				!enemiesStore.list.some(
-					(e) => e.perched && e.pos.x + e.width / 2 >= p.left && e.pos.x + e.width / 2 <= p.left + p.width
-				)
-		)
-		return free.length ? free[Math.floor(Math.random() * free.length)] : null
-	}
-
-	private spawnEnemy(kind: EnemyKind) {
-		const w = get(wave)
-		const t = ENEMY_TYPES[kind]
-		// Turrets ride a wall-flush perch when one is free: dropped onto the edge ledge, they
-		// can't fall and just fire inward (perched behaviour in Enemy.#updateTurret). With no
-		// free perch they fall back to the rolling floor turret below.
-		if (kind === 'turret') {
-			const perch = this.freeEdgePerch()
-			if (perch) {
-				const px = perch.edge === 'left' ? perch.left : perch.left + perch.width - t.width
-				const enemy = new Enemy(
-					{ x: px, y: perch.top - t.height },
-					{ kind, speed: 0, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
-				)
-				enemy.perched = true
-				enemiesStore.add(enemy)
-				return
-			}
-		}
-		// Alternate the side each enemy walks/flies in from.
-		const fromLeft = this.spawnSide++ % 2 === 0
-		// 'onscreen' kinds (the anchored turret) deploy in view; the rest enter from
-		// off the nearest side.
-		const x =
-			t.spawnX === 'onscreen'
-				? this.world.width * (0.15 + Math.random() * 0.7)
-				: fromLeft
-					? -60
-					: this.world.width + 60
-		// 'air' kinds enter high in an altitude band; ground kinds at floor level —
-		// offset by their own height so a tall brute doesn't spawn sunk into the floor.
-		const y =
-			t.spawnY === 'air' ? this.world.height * (t.altitude ?? 0.32) : this.world.height - t.height
-		// Chase kinds scale speed with the wave (waveSpeedMul); fixed kinds use their base.
-		const speed = t.waveSpeedMul != null ? waveEnemySpeed(w) * t.waveSpeedMul : t.speed
-		enemiesStore.add(
-			new Enemy(
-				{ x, y },
-				{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w) }
-			)
-		)
-	}
-
-	// --- Portal-based spawning ------------------------------------------------
-	// Enemies no longer trickle in one-by-one from the edges. On each spawn tick the director
-	// assembles a small BATCH (up to MAX_HORDE) using the same floors/deficit/ground brain as
-	// before, then tears open a rift to carry it: air kinds get an air rift, ground kinds a
-	// ground rift, turrets keep perching directly. The rift telegraphs, then pours the pack
-	// out — clustered and readable instead of scattered.
-	private countKind(k: EnemyKind) {
-		return enemiesStore.list.filter((e) => e.kind === k).length
-	}
-
-	// Enemies still queued inside open rifts (not yet materialised). Counted toward the field
-	// so the director doesn't overfill while a telegraph is still winding up.
-	private queuedCount(k?: EnemyKind) {
-		let n = 0
-		for (const p of portalsStore.list) n += k ? p.queue.filter((q) => q === k).length : p.queue.length
-		return n
-	}
-
-	// Pick the single best kind to add given the live field, the rifts' pending queues, and a
-	// `projected` tally of what's already in the batch being assembled. Unmet pressure floors
-	// win first (weighted by how far below target they sit, so a totally-absent bomber isn't
-	// starved by a flyer that's only one short); otherwise draw fodder from the theme's ground
-	// pool (repeats weight the odds — ['biker','biker','charger'] is 2:1 bikers).
-	private pickSpawnKind(def: WaveDef, projected: Map<EnemyKind, number>): EnemyKind | null {
-		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k) + (projected.get(k) ?? 0)
-		const deficits = Object.entries(def.floors ?? {})
-			.map(([kind, target]) => ({ kind: kind as EnemyKind, need: target - total(kind as EnemyKind) }))
-			.filter((p) => p.need > 0)
-		if (deficits.length) {
-			let r = Math.random() * deficits.reduce((s, p) => s + p.need, 0)
-			let chosen = deficits[deficits.length - 1].kind // guard against FP undershoot
-			for (const p of deficits) {
-				r -= p.need
-				if (r < 0) {
-					chosen = p.kind
-					break
-				}
-			}
-			return chosen
-		}
-		return def.ground.length ? def.ground[Math.floor(Math.random() * def.ground.length)] : null
-	}
-
-	// Keep the field topped up to the wave cap. While a rift can still be opened and the field
-	// (live + queued) is under cap, assemble a batch and open rift(s) for it. If the field is
-	// capped but a pressure floor is unmet, retire the ground unit stuck furthest below a
-	// camping player and open a small rift for the missing vector — no spot stays safe.
-	private spawnFromBudget() {
-		const def = waveDef(get(wave))
-		if (portalsStore.list.length >= MAX_ACTIVE_PORTALS) return // let the open rifts finish first
-		const effective = enemiesStore.list.length + this.queuedCount()
-		if (effective >= def.cap) {
-			this.cullForMissingFloor(def)
-			return
-		}
-		const room = Math.min(def.cap - effective, MAX_HORDE)
-		const projected = new Map<EnemyKind, number>()
-		const batch: EnemyKind[] = []
-		for (let i = 0; i < room; i++) {
-			const kind = this.pickSpawnKind(def, projected)
-			if (!kind) break
-			batch.push(kind)
-			projected.set(kind, (projected.get(kind) ?? 0) + 1)
-		}
-		if (batch.length) this.openPortalsForBatch(batch)
-	}
-
-	// Field is capped and a pressure floor is still unmet: cull the stuck camper and rift in
-	// the missing vector.
-	private cullForMissingFloor(def: WaveDef) {
-		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k)
-		const missing = Object.entries(def.floors ?? {})
-			.map(([kind, target]) => ({ kind: kind as EnemyKind, need: target - total(kind as EnemyKind) }))
-			.filter((p) => p.need > 0)
-		if (!missing.length) return
-		let stuck: Enemy | null = null
-		let worst = -Infinity
-		for (const e of enemiesStore.list) {
-			if (!ENEMY_TYPES[e.kind].cullable) continue
-			const below = e.pos.y - this.player.pos.y
-			if (below > worst) {
-				worst = below
-				stuck = e
-			}
-		}
-		if (stuck) {
-			enemiesStore.delete(stuck)
-			this.openPortalsForBatch([missing[0].kind])
-		}
-	}
-
-	// Split a batch by placement and open the rift(s) to carry it. Turrets don't ride portals —
-	// they perch directly (a single, readable unit, not part of the dispersal problem).
-	private openPortalsForBatch(batch: EnemyKind[]) {
-		const air: EnemyKind[] = []
-		const ground: EnemyKind[] = []
-		for (const k of batch) {
-			if (k === 'turret') this.spawnEnemy('turret')
-			else if (ENEMY_TYPES[k].spawnY === 'air') air.push(k)
-			else ground.push(k)
-		}
-		if (air.length) this.openPortal('air', air)
-		if (ground.length) this.openPortal('ground', ground)
-	}
-
-	// Choose where a rift tears open. Air rifts hover in the altitude band on an alternating
-	// side; ground rifts sit at floor level at a screen edge (preferred), or sometimes ride a
-	// visible ledge (edge perches first) so a pack can drop in from a platform.
-	private pickPortalSite(placement: PortalPlacement): { pos: { x: number; y: number }; anchor: Platform | null } {
-		const W = this.world.width
-		const H = this.world.height
-		const fromLeft = this.spawnSide++ % 2 === 0
-		if (placement === 'air') {
-			return { pos: { x: fromLeft ? W * 0.14 : W * 0.86, y: H * 0.3 }, anchor: null }
-		}
-		const ledges = this.proceduralPlatforms.filter((p) => p.visible)
-		if (ledges.length && Math.random() < 0.35) {
-			const perches = ledges.filter((p) => p.edge)
-			const pool = perches.length ? perches : ledges
-			const ledge = pool[Math.floor(Math.random() * pool.length)]
-			return { pos: { x: ledge.left + ledge.width / 2, y: ledge.top - 4 }, anchor: ledge }
-		}
-		return { pos: { x: fromLeft ? 44 : W - 44, y: H - 30 }, anchor: null }
-	}
-
-	private openPortal(placement: PortalPlacement, kinds: EnemyKind[]) {
-		const { pos, anchor } = this.pickPortalSite(placement)
-		// Ground rifts rise out of their surface (a ledge top, else the canvas floor); air rifts
-		// float free (null). Keeps the rift from sinking under the ground or a passerelle.
-		const baseY = placement === 'air' ? null : anchor ? anchor.top : this.world.height
-		portalsStore.add(new Portal(pos, placement, kinds, anchor, baseY))
-	}
-
-	// Build a wave-scaled Enemy of `kind` at (x, y). Shared by the rift emitter and the direct
-	// turret spawn so toughness/speed ramps stay in one place.
-	private makeEnemy(kind: EnemyKind, x: number, y: number, elite = false): Enemy {
-		const w = get(wave)
-		const t = ENEMY_TYPES[kind]
-		const speed = t.waveSpeedMul != null ? waveEnemySpeed(w) * t.waveSpeedMul : t.speed
-		return new Enemy(
-			{ x, y },
-			{ kind, speed, health: waveEnemyHealth(kind, w), damage: waveContactDamage(kind, w), elite }
-		)
-	}
-
-	// Spawn a single ELITE of `kind` at wave milestones (see startNextWave): a scaled-up miniboss
-	// dropped centre-stage with a burst + shock ring, rather than trickled in through a rift. Ground
-	// kinds get their feet on the floor (using the elite size-up); air kinds hang in the band.
-	private spawnElite(kind: EnemyKind) {
-		const t = ENEMY_TYPES[kind]
-		const eh = t.height * ELITE_SIZE_MUL
-		const ew = t.width * ELITE_SIZE_MUL
-		const x = this.world.width / 2 - ew / 2
-		const y =
-			t.spawnY === 'air' ? this.world.height * (t.altitude ?? 0.32) : this.world.height - eh - 2
-		enemiesStore.add(this.makeEnemy(kind, x, y, true))
-		const cx = x + ew / 2
-		const cy = y + eh / 2
-		this.shockRings.push({ x: cx, y: cy, max: Math.max(ew, eh) * 1.6, t: 1, color: '#f59e0b' })
-		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
-	}
-
-	// A rift released a unit: drop it into the world at the rift's mouth (centred for air,
-	// on the ledge for a platform rift, at floor level otherwise) and let it behave normally.
-	private materializeFromPortal(portal: Portal, kind: EnemyKind) {
-		const t = ENEMY_TYPES[kind]
-		let x: number
-		let y: number
-		if (portal.placement === 'air') {
-			x = portal.pos.x - t.width / 2
-			y = portal.pos.y - t.height / 2
-		} else if (portal.anchor) {
-			const a = portal.anchor
-			x = Math.min(Math.max(a.left, portal.pos.x - t.width / 2), a.left + a.width - t.width)
-			y = a.top - t.height
-		} else {
-			x = portal.pos.x - t.width / 2
-			y = this.world.height - t.height
-		}
-		enemiesStore.add(this.makeEnemy(kind, x, y))
-	}
-
-	// Advance every open rift, materialise whatever it emits this frame, and retire the ones
-	// that have finished collapsing.
-	private updatePortals(frameTime: number) {
-		for (const portal of portalsStore.list.slice()) {
-			for (const kind of portal.update(frameTime)) this.materializeFromPortal(portal, kind)
-			if (portal.done) portalsStore.delete(portal)
-		}
 	}
 
 	// --- Combat resolution ----------------------------------------------------
@@ -1125,395 +873,10 @@ export class GameWorld {
 		)
 	}
 
-	// A blast at (cx, cy): damage + knockback every enemy within `radius`, spawn an expanding
-	// ring + a burst puff. Shared by nova (instant) and slam (on landing). A killing blow drops
-	// its gem/score the same way a bolt would — enemy.hit self-removes and onEnemyKilled banks.
-	// Public so passive items (thorns, explosive) can trigger their own blasts through the same path.
+	// Thin forwarder to the combat resolver's blast, kept on GameWorld so the powers above and the
+	// passive items (items.ts, which receive a GameWorld) trigger blasts through the same path.
 	shockwave(cx: number, cy: number, radius: number, damage: number, knockback: number, color: string) {
-		this.shockRings.push({ x: cx, y: cy, max: radius, t: 1, color })
-		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
-		for (const enemy of enemiesStore.list.slice()) {
-			if (enemy.health <= 0) continue // already killed this chain — don't double-count the kill
-			const ex = enemy.pos.x + enemy.width / 2
-			const ey = enemy.pos.y + enemy.height / 2
-			const d = Math.hypot(ex - cx, ey - cy)
-			if (d > radius) continue
-			const nx = (ex - cx) / (d || 1)
-			enemy.pos.x += nx * knockback
-			enemy.pos.y -= knockback * 0.3 // a little upward pop for feel
-			if (damage > 0) {
-				this.spawnDamageNumber(ex, enemy.pos.y, damage, false)
-				if (enemy.hit(damage)) this.onEnemyKilled(enemy)
-			}
-		}
-	}
-
-	// Pop a floating damage number over (x, y). Crits read bigger + amber. Capped at 60 live numbers
-	// so a big explosive chain can't balloon the array.
-	private spawnDamageNumber(x: number, y: number, amount: number, crit = false) {
-		if (this.damageNumbers.length >= 60) this.damageNumbers.shift()
-		this.damageNumbers.push({
-			x: x + (Math.random() - 0.5) * 14,
-			y,
-			vy: -0.6,
-			t: 1,
-			text: `${amount}`,
-			color: crit ? '#fbbf24' : '#e2e8f0', // amber-400 / slate-200
-			size: crit ? 20 : 13
-		})
-	}
-
-	// Age and draw the floating damage numbers (rise + fade over ~0.7s). Over everything, like rings.
-	private drawDamageNumbers(frameTime: number) {
-		for (let i = this.damageNumbers.length - 1; i >= 0; i--) {
-			const d = this.damageNumbers[i]
-			d.t -= frameTime / 700
-			d.y += (d.vy * frameTime) / 16
-			if (d.t <= 0) {
-				this.damageNumbers.splice(i, 1)
-				continue
-			}
-			this.ctx.save()
-			this.ctx.globalAlpha = Math.max(0, Math.min(1, d.t * 1.4))
-			this.ctx.fillStyle = d.color
-			this.ctx.font = `700 ${d.size}px ui-monospace, monospace`
-			this.ctx.textAlign = 'center'
-			this.ctx.textBaseline = 'middle'
-			this.ctx.lineWidth = 3
-			this.ctx.strokeStyle = 'rgba(2, 6, 23, 0.7)' // slate-950 outline for legibility over sprites
-			this.ctx.strokeText(d.text, d.x, d.y)
-			this.ctx.fillText(d.text, d.x, d.y)
-			this.ctx.restore()
-		}
-	}
-
-	// Age and draw the blast rings (nova / slam). Purely visual; expands and fades over ~0.32s.
-	private drawShockRings(frameTime: number) {
-		for (let i = this.shockRings.length - 1; i >= 0; i--) {
-			const ring = this.shockRings[i]
-			ring.t -= frameTime / 320
-			if (ring.t <= 0) {
-				this.shockRings.splice(i, 1)
-				continue
-			}
-			const grow = 0.45 + (1 - ring.t) * 0.95 // 45% → ~140% of the blast radius
-			this.ctx.save()
-			this.ctx.globalAlpha = Math.max(0, ring.t)
-			this.ctx.strokeStyle = ring.color
-			this.ctx.lineWidth = 4
-			this.ctx.beginPath()
-			this.ctx.arc(ring.x, ring.y, ring.max * grow, 0, Math.PI * 2)
-			this.ctx.stroke()
-			this.ctx.restore()
-		}
-	}
-
-	// Life Steal stat: a connecting bolt has `lifeStealChance` to heal 1 HP (capped at max).
-	// Chance-based rather than per-hit flat so the many small bolts don't trivialise survival.
-	private tryLifeSteal() {
-		if (this.lifeStealChance <= 0) return
-		if (get(playerHp) >= get(maxHp)) return
-		if (Math.random() < this.lifeStealChance) {
-			playerHp.update((h) => Math.min(get(maxHp), h + 1))
-		}
-	}
-
-	// Enemy took a lethal hit: bank score, drop its XP gem (falls under gravity) and,
-	// while the player is hurt, maybe a med-kit.
-	private onEnemyKilled(enemy: Enemy) {
-		score.update((s) => s + 1)
-		xpGemsStore.add(
-			new XpGem(
-				{ x: enemy.pos.x + enemy.width / 2 - 7, y: enemy.pos.y + enemy.height / 2 },
-				{ value: enemy.xpValue }
-			)
-		)
-		// Luck raises every drop chance (Brotato-style): med-kits and credit crates roll at
-		// (base × (1 + luck)).
-		const luckMul = 1 + this.luck
-		if (get(playerHp) < get(maxHp) && Math.random() < ENEMY_TYPES[enemy.kind].medkitDrop * luckMul) {
-			healthPacksStore.add(
-				new HealthPack({ x: enemy.pos.x + enemy.width / 2 - 9, y: enemy.pos.y + enemy.height / 2 })
-			)
-		}
-		// An elite always drops a fat credit crate (its whole point as a milestone reward), on top of
-		// its big gem — so clearing one meaningfully funds the next shop.
-		if (enemy.elite) {
-			creditCratesStore.add(
-				new CreditCrate(
-					{ x: enemy.pos.x + enemy.width / 2 - 10, y: enemy.pos.y + enemy.height / 2 },
-					{ value: CREDIT_CRATE_VALUE * 3 }
-				)
-			)
-		}
-		// Rare credit crate — the shop currency (banked on walk-over, spent at the intermission).
-		else if (Math.random() < CREDIT_DROP_CHANCE * luckMul) {
-			creditCratesStore.add(
-				new CreditCrate(
-					{ x: enemy.pos.x + enemy.width / 2 - 10, y: enemy.pos.y + enemy.height / 2 },
-					{ value: CREDIT_CRATE_VALUE }
-				)
-			)
-		}
-		// Passive items react to the kill last (an explosive relic may chain into more kills — the
-		// shockwave/resolveHits health guards keep a chain from re-banking an already-dead enemy).
-		this.itemsOnKill(enemy)
-	}
-
-	// Bullet → enemy hits. Snapshot both pools first: delete() swaps the store arrays
-	// mid-loop, so iterate copies (the old writable froze the loop the same way).
-	private resolveHits() {
-		const projs = projectilesStore.list.slice()
-		const foes = enemiesStore.list.slice()
-		if (!projs.length || !foes.length) return
-		for (const projectile of projs) {
-			if (projectile.hostile) continue // enemy shots don't hit enemies
-			const projRect = {
-				width: projectile.width,
-				height: projectile.height,
-				top: projectile.pos.y - projectile.height / 2,
-				left: projectile.pos.x - projectile.width / 2
-			}
-			for (const enemy of foes) {
-				if (enemy.health <= 0) continue // killed earlier this frame (e.g. an item chain) — skip
-				const enemyRect = {
-					width: enemy.width,
-					height: enemy.height,
-					top: enemy.pos.y,
-					left: enemy.pos.x
-				}
-				if (collision(enemyRect, projRect)) {
-					// Global stats layer over the bolt's own damage: +Damage flat, then a Crit
-					// roll for CRIT_MULT×. A killing bolt drops XP (tumbles under gravity, so the
-					// player must leave a safe perch to bank it) and, while hurt, maybe a med-kit.
-					let dmg = projectile.damage + this.bonusDamage
-					let crit = false
-					if (this.critChance > 0 && Math.random() < this.critChance) {
-						crit = true
-						dmg = Math.round(dmg * CRIT_MULT)
-						effectsStore.add(
-							new Effect(
-								{ x: enemy.pos.x + enemy.width / 2, y: enemy.pos.y + enemy.height / 2 },
-								'smoke_14',
-								{ centered: true }
-							)
-						)
-					}
-					this.spawnDamageNumber(enemy.pos.x + enemy.width / 2, enemy.pos.y, dmg, crit)
-					if (enemy.hit(dmg)) this.onEnemyKilled(enemy)
-					else this.itemsOnHit(enemy, dmg) // a survivor was struck (items may react)
-					this.tryLifeSteal() // a connecting bolt may heal (Life Steal stat)
-					projectilesStore.delete(projectile)
-					break
-				}
-			}
-		}
-	}
-
-	// Take `amount` damage + i-frames; 0 HP ends the run. Shared by contact, shots
-	// and bomb blasts (each passes its own scaled damage). The base shield soaks the hit
-	// first: a charge is spent (no HP lost) and the bubble breaks briefly instead.
-	private damagePlayer(amount = 1) {
-		// Dodge (Brotato): a per-hit roll to avoid the hit entirely. No i-frames granted, so each
-		// overlapping step rolls fresh — a high-dodge build flickers through contact.
-		if (this.dodgeChance > 0 && Math.random() < this.dodgeChance) {
-			effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
-			return
-		}
-		this.shieldRegenTimer = 0 // any incoming damage stalls shield regen
-		if (this.shieldCharges > 0) {
-			this.shieldCharges--
-			this.invuln = this.invulnSteps
-			this.shieldFlash = SHIELD_FLASH_STEPS
-			this.shieldFlashBig = this.shieldCharges === 0 // full break reads bigger
-			return
-		}
-		// Armor reduces the damage that reaches HP, but a hit always lands for at least 1 so it
-		// still stings (matters most against the bigger late-wave hits).
-		const dealt = Math.max(1, Math.round(amount * (1 - this.armorReduction)))
-		const hp = get(playerHp) - dealt
-		playerHp.set(hp)
-		this.invuln = this.invulnSteps
-		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
-		this.itemsOnDamaged(dealt) // reactive items (thorns) fire on a real HP loss
-		if (hp <= 0) gameOver()
-	}
-
-	// Regenerate the shield: one charge every shieldRegenSteps while below max and not
-	// recently hit (damagePlayer resets the timer). The flash VFX ticks down each step.
-	private updateShield() {
-		if (this.shieldFlash > 0) this.shieldFlash--
-		if (this.shieldCharges >= this.shieldMax) return
-		this.shieldRegenTimer++
-		if (this.shieldRegenTimer >= this.shieldRegenSteps) {
-			this.shieldCharges++
-			this.shieldRegenTimer = 0
-		}
-	}
-
-	// Draw the shield bubble around the player (interpolated position): a steady faint
-	// ring while it has charges, plus an expanding burst on a break/absorb.
-	private drawShield(alpha: number) {
-		const px = this.player.prevPos.x + (this.player.pos.x - this.player.prevPos.x) * alpha
-		const py = this.player.prevPos.y + (this.player.pos.y - this.player.prevPos.y) * alpha
-		const cx = px + this.player.width / 2
-		const cy = py + this.player.height / 2
-		const baseR = this.player.width * 0.72
-		const ctx = this.ctx
-		if (this.shieldFlash > 0) {
-			const t = 1 - this.shieldFlash / SHIELD_FLASH_STEPS // 0 → 1 over the burst
-			ctx.save()
-			ctx.globalAlpha = Math.max(0, 1 - t)
-			ctx.strokeStyle = '#67e8f9' // cyan-300
-			ctx.lineWidth = this.shieldFlashBig ? 4 : 2
-			ctx.beginPath()
-			ctx.arc(cx, cy, baseR + (this.shieldFlashBig ? 42 : 22) * t, 0, Math.PI * 2)
-			ctx.stroke()
-			ctx.restore()
-		}
-		if (this.shieldCharges > 0) {
-			const strength = this.shieldCharges / Math.max(1, this.shieldMax)
-			ctx.save()
-			ctx.strokeStyle = '#38bdf8' // sky-400
-			ctx.shadowColor = '#38bdf8'
-			ctx.shadowBlur = 8
-			ctx.lineWidth = 2
-			ctx.globalAlpha = 0.14 + 0.16 * strength
-			ctx.beginPath()
-			ctx.arc(cx, cy, baseR, 0, Math.PI * 2)
-			ctx.stroke()
-			ctx.globalAlpha = 0.05 + 0.05 * strength // faint fill so it reads as a bubble
-			ctx.fillStyle = '#38bdf8'
-			ctx.fill()
-			ctx.restore()
-		}
-	}
-
-	// Enemy contact → player takes a hit (unless in i-frames).
-	private resolvePlayerDamage() {
-		if (this.invuln > 0) return
-		const playerRect = {
-			width: this.player.width,
-			height: this.player.height,
-			top: this.player.pos.y,
-			left: this.player.pos.x
-		}
-		for (const enemy of enemiesStore.list) {
-			// Some kinds (the turret) are harmless to touch — only their bolts bite.
-			if (ENEMY_TYPES[enemy.kind].contactDamage === false) continue
-			const enemyRect = {
-				width: enemy.width,
-				height: enemy.height,
-				top: enemy.pos.y,
-				left: enemy.pos.x
-			}
-			if (collision(playerRect, enemyRect)) {
-				this.damagePlayer(enemy.damage)
-				break
-			}
-		}
-	}
-
-	// Hostile bolt hits the player → a hit, and the bolt is spent.
-	private resolveEnemyShots() {
-		if (this.invuln > 0) return
-		const playerRect = {
-			width: this.player.width,
-			height: this.player.height,
-			top: this.player.pos.y,
-			left: this.player.pos.x
-		}
-		for (const projectile of projectilesStore.list) {
-			if (!projectile.hostile) continue
-			const projRect = {
-				width: projectile.width,
-				height: projectile.height,
-				top: projectile.pos.y - projectile.height / 2,
-				left: projectile.pos.x - projectile.width / 2
-			}
-			if (collision(playerRect, projRect)) {
-				this.damagePlayer(projectile.damage)
-				projectilesStore.delete(projectile)
-				break
-			}
-		}
-	}
-
-	// A detonating bomb hits the player once (a single AoE check on the first step
-	// of its explosion). Mark it resolved even during i-frames so an old blast can
-	// never carry over and hit after the i-frames lapse.
-	private resolveBombs() {
-		for (const bomb of bombsStore.list) {
-			if (bomb.state !== 'exploding' || bomb.damageApplied) continue
-			bomb.damageApplied = true
-			if (this.invuln > 0) continue
-			const dx = this.player.pos.x + this.player.width / 2 - bomb.centerX
-			const dy = this.player.pos.y + this.player.height / 2 - bomb.centerY
-			if (Math.hypot(dx, dy) <= bomb.blastRadius) this.damagePlayer(bomb.damage)
-		}
-	}
-
-	// Walk over a dropped gem (the pickup magnet eases the last few pixels) to bank
-	// its XP. Uncollected gems expire on the floor, so a pure camper forfeits them.
-	private resolveGemPickups() {
-		const gems = xpGemsStore.list.slice()
-		if (!gems.length) return
-		const playerRect = {
-			width: this.player.width,
-			height: this.player.height,
-			top: this.player.pos.y,
-			left: this.player.pos.x
-		}
-		for (const gem of gems) {
-			const gemRect = { width: gem.width, height: gem.height, top: gem.pos.y, left: gem.pos.x }
-			if (collision(playerRect, gemRect)) {
-				const ups = addXp(gem.value * this.xpMul)
-				if (ups > 0) this.queueLevelUps(ups)
-				xpGemsStore.delete(gem)
-			}
-		}
-	}
-
-	// Walk over a med-kit to heal — only while hurt, so a full-HP player leaves it on
-	// the ground to grab later. Uncollected kits expire.
-	private resolveHealthPickups() {
-		const packs = healthPacksStore.list.slice()
-		if (!packs.length || get(playerHp) >= get(maxHp)) return
-		const playerRect = {
-			width: this.player.width,
-			height: this.player.height,
-			top: this.player.pos.y,
-			left: this.player.pos.x
-		}
-		for (const pack of packs) {
-			const packRect = { width: pack.width, height: pack.height, top: pack.pos.y, left: pack.pos.x }
-			if (collision(playerRect, packRect)) {
-				playerHp.update((h) => Math.min(get(maxHp), h + pack.heal))
-				effectsStore.add(new Effect({ x: pack.pos.x, y: pack.pos.y }, 'smoke_12'))
-				healthPacksStore.delete(pack)
-			}
-		}
-	}
-
-	// Walk over a credit crate to bank its value (no magnet — a deliberate detour). Collectable
-	// any time the run is live, including on the walk back to the shop during the intermission.
-	private resolveCreditPickups() {
-		const crates = creditCratesStore.list.slice()
-		if (!crates.length) return
-		const playerRect = {
-			width: this.player.width,
-			height: this.player.height,
-			top: this.player.pos.y,
-			left: this.player.pos.x
-		}
-		for (const crate of crates) {
-			const crateRect = { width: crate.width, height: crate.height, top: crate.pos.y, left: crate.pos.x }
-			if (collision(playerRect, crateRect)) {
-				credits.update((c) => c + crate.value)
-				effectsStore.add(new Effect({ x: crate.pos.x, y: crate.pos.y }, 'smoke_12'))
-				creditCratesStore.delete(crate)
-			}
-		}
+		this.combat.shockwave(cx, cy, radius, damage, knockback, color)
 	}
 
 	// --- Camera & parallax ----------------------------------------------------
@@ -1595,13 +958,7 @@ export class GameWorld {
 		// platforms drop out of collectPlatforms as soon as we leave 'idle', so it falls through the
 		// page into the arena). NO teleport. The weapon picker opens below once it has landed.
 		if (entering && !this.wasEntering) {
-			enemiesStore.clear()
-			projectilesStore.clear()
-			xpGemsStore.clear()
-			bombsStore.clear()
-			healthPacksStore.clear()
-			creditCratesStore.clear()
-			portalsStore.clear()
+			this.clearAllPools()
 			this.shopOpen = false
 			this.intermission = false
 			this.spawnDwell = 0
@@ -1627,13 +984,7 @@ export class GameWorld {
 		// the arena + the player's position were already established (it fell in), so we DON'T rebuild
 		// the layout or snap it onto the pad — it keeps wherever it landed.
 		if (playing && !this.wasPlaying) {
-			enemiesStore.clear()
-			projectilesStore.clear()
-			xpGemsStore.clear()
-			bombsStore.clear()
-			healthPacksStore.clear()
-			creditCratesStore.clear()
-			portalsStore.clear()
+			this.clearAllPools()
 			// (Re)configure the Player from the character registry, then reset its base stats.
 			// One class ships today (Punk); the registry stays the seam for re-adding classes.
 			this.player.applyCharacter(CHARACTERS.punk)
@@ -1692,7 +1043,7 @@ export class GameWorld {
 				this.updateIntermission()
 			} else {
 				// Advance open rifts every frame (they emit their hordes on their own timers).
-				this.updatePortals(frameTime)
+				this.director.updatePortals(frameTime)
 				this.waveTimer += frameTime
 				if (this.waveTimer >= waveDuration(get(wave))) {
 					// Combat over: clear the field, spawn a new arena, and wait for the
@@ -1701,7 +1052,7 @@ export class GameWorld {
 				} else {
 					this.spawnTimer += frameTime
 					if (this.spawnTimer >= waveSpawnInterval(get(wave))) {
-						this.spawnFromBudget()
+						this.director.spawnFromBudget()
 						this.spawnTimer = 0
 					}
 				}
@@ -1721,13 +1072,7 @@ export class GameWorld {
 				openWeaponSelect()
 			}
 		} else if (!playing) {
-			if (enemiesStore.list.length) enemiesStore.clear()
-			if (projectilesStore.list.length) projectilesStore.clear()
-			if (xpGemsStore.list.length) xpGemsStore.clear()
-			if (bombsStore.list.length) bombsStore.clear()
-			if (healthPacksStore.list.length) healthPacksStore.clear()
-			if (creditCratesStore.list.length) creditCratesStore.clear()
-			if (portalsStore.list.length) portalsStore.clear()
+			this.clearAllPools()
 			this.shopOpen = false
 			this.invuln = 0
 			this.waveBanner = 0
@@ -1797,16 +1142,16 @@ export class GameWorld {
 				// Auto-attack: each weapon aims from its own muzzle and fires on its own cadence.
 				this.playerCombat(playing)
 				if (playing) {
-					this.resolveHits()
-					this.resolveGemPickups()
-					this.resolveHealthPickups()
-					this.resolveCreditPickups()
+					this.combat.resolveHits()
+					this.combat.resolveGemPickups()
+					this.combat.resolveHealthPickups()
+					this.combat.resolveCreditPickups()
 					if (this.regenPerStep > 0) this.applyRegen()
-					this.updateShield()
+					this.combat.updateShield()
 					if (this.invuln > 0) this.invuln--
-					this.resolvePlayerDamage()
-					this.resolveEnemyShots()
-					this.resolveBombs()
+					this.combat.resolvePlayerDamage()
+					this.combat.resolveEnemyShots()
+					this.combat.resolveBombs()
 				}
 			}
 			this.accumulator -= FIXED_STEP
@@ -1867,15 +1212,15 @@ export class GameWorld {
 			this.player.draw(this.ctx, animDelta, alpha)
 		}
 		// Shield bubble over the player (only in an active run, so idle shows none).
-		if (playing) this.drawShield(alpha)
+		if (playing) this.combat.drawShield(alpha)
 		// Passive items with a visual (drones) draw over the player.
 		if (playing) this.itemsDraw(alpha)
 		// Snapshot: Effect.draw() self-removes from the live pool when its animation ends.
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
 		// Nova / slam blast rings, over everything (age out even if the run just ended).
-		this.drawShockRings(frameTime)
+		this.combat.drawShockRings(frameTime)
 		// Floating damage numbers, topmost so they read over sprites and rings alike.
-		this.drawDamageNumbers(frameTime)
+		this.combat.drawDamageNumbers(frameTime)
 		this.ctx.restore() // end world space — the HUD/overlays below are screen-fixed
 
 		if (playing) {

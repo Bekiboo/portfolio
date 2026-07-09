@@ -47,22 +47,3 @@
 		</section>
 	</main>
 </div>
-
-<style>
-	/* Lines through titles */
-	/* .title::before {
-		content: '';
-		margin: 1rem 0.5rem 0 0;
-		width: 100%;
-		height: 0.1rem;
-		background: var(--delft-blue);
-		width: 4rem;
-	}
-	.title::after {
-		content: '';
-		margin: 1rem 0 0 0.5rem;
-		width: 100%;
-		height: 0.1rem;
-		background: var(--delft-blue);
-	} */
-</style>

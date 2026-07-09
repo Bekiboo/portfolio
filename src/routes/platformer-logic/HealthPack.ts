@@ -1,8 +1,7 @@
-import { collision, type Bounds } from './utils'
+import { GRAVITY, lerpPos, settleOnGround, type Bounds } from './utils'
 import { healthPacksStore } from '$lib/stores'
 import type { Platform } from './Platform'
 
-const GRAVITY = 0.33 // matches the world gravity used by Player/Enemy/XpGem
 const LIFETIME = 800 // physics steps a pack lives (~13s) — a touch longer than a gem
 const BLINK_STEPS = 180 // blinks over its final ~3s to warn it's about to vanish
 
@@ -38,49 +37,14 @@ export class HealthPack {
 		this.velocity.y += GRAVITY
 		this.pos.x += this.velocity.x * deltaTime
 		this.pos.y += this.velocity.y * deltaTime
-		this.#land(canvas, platforms)
+		settleOnGround(this, canvas, platforms)
 		if (this.grounded) this.velocity.x *= 0.86
-	}
-
-	// Rest on the canvas floor or the top of any platform it lands on.
-	#land(canvas: Bounds, platforms: Platform[]) {
-		this.grounded = false
-		if (this.pos.y + this.height >= canvas.height) {
-			this.pos.y = canvas.height - this.height
-			this.velocity.y = 0
-			this.grounded = true
-		}
-		if (this.velocity.y >= 0) {
-			for (const platform of platforms) {
-				if (
-					collision(
-						{ left: this.pos.x, top: this.pos.y, width: this.width, height: this.height },
-						platform
-					)
-				) {
-					if (this.prevPos.y + this.height <= platform.top + 8) {
-						this.pos.y = platform.top - this.height
-						this.velocity.y = 0
-						this.grounded = true
-					}
-					break
-				}
-			}
-		}
-		if (this.pos.x < 0) {
-			this.pos.x = 0
-			this.velocity.x *= -0.4
-		} else if (this.pos.x + this.width > canvas.width) {
-			this.pos.x = canvas.width - this.width
-			this.velocity.x *= -0.4
-		}
 	}
 
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
 		// Blink out over the final stretch so its disappearance isn't a surprise.
 		if (this.age > LIFETIME - BLINK_STEPS && Math.floor(this.age / 8) % 2 === 0) return
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
-		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		const { x, y } = lerpPos(this, alpha)
 		const s = this.width
 		ctx.save()
 		ctx.shadowColor = '#f87171' // red-400 glow

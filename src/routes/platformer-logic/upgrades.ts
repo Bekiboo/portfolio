@@ -10,14 +10,9 @@ import type { Power } from './Power'
 // and is bumped by the level-up upgrades below. The caps keep the snowball from
 // trivialising the game (an old build let a player stack 20 pinpoint projectiles
 // and vacuum the whole map).
-export const BASE_FIRE_STEPS = 28 // physics steps between shots (~2/s — deliberately slow at lvl 1)
 export const BASE_INVULN = 72 // ~1.2s of i-frames after a hit
 export const BASE_MAGNET = 48 // XP-gem pickup radius (px) — small, so the player must sweep the floor
-export const BASE_SPEED = 5 // player move speed
-export const BASE_SPREAD = 0.07 // base weapon inaccuracy (radians of random deviation per bolt)
-export const BASE_PROJECTILE_SPEED = 8 // bolt travel speed at lvl 1 (slow; Velocity raises it)
 export const BASE_JUMP = 8 // jump velocity at lvl 1 (Spring raises it)
-export const BASE_ATTACK_RANGE = 400 // px: enemies must be this close before the player opens fire (bolts still fly full distance; Optique raises it)
 export const BASE_SHIELD_MAX = 1 // shield charges when full (each absorbs one hit)
 export const BASE_SHIELD_REGEN = 480 // steps to regen one shield charge (~8s at 60Hz)
 export const MAX_SHIELD_MAX = 4 // hard cap on shield charges

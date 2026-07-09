@@ -7,9 +7,7 @@ import { Weapon } from './Weapon'
 import type { WeaponKind } from './weaponTypes'
 import { Power } from './Power'
 import type { PowerKind } from './powerTypes'
-import { collision, getSprite, hasSprite, type Bounds } from './utils'
-
-const GRAVITY = 0.33
+import { collision, getSprite, hasSprite, GRAVITY, lerpPos, type Bounds } from './utils'
 
 export class Player {
 	character = 'punk' // sprite-sheet key (set from the active character's `sprite`)
@@ -43,7 +41,6 @@ export class Player {
 	jumpStrength = 8 // upward jump velocity (Spring upgrade raises it); reset each run
 	isFalling = false
 	jumpAvailable = 2
-	status = 'idle'
 
 	constructor(pos: { x: number; y: number }) {
 		this.pos = pos
@@ -133,8 +130,7 @@ export class Player {
 	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
 		// Render at the interpolated position between the last two physics steps
 		// so motion stays smooth at the display's refresh rate.
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
-		const y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		const { x, y } = lerpPos(this, alpha)
 		// Each weapon draws its gun + hand behind the body (so the character sits in front).
 		// Only a ranged class holds guns (the attackStyle seam — kept for when melee classes
 		// return; the Punk is always ranged today).
@@ -243,14 +239,6 @@ export class Player {
 		this.velocity.y = -this.jumpStrength
 		this.isFalling = true
 		this.jumpAvailable--
-	}
-
-	punch(keys: KeyState) {
-		if (keys['right'] || keys['left']) {
-			this.#playerSprite('run_attack')
-		} else {
-			Math.random() > 0.5 ? this.#playerSprite('punch') : this.#playerSprite('punch_2')
-		}
 	}
 
 	#applyGravity(deltaTime: number) {

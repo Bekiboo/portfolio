@@ -1,4 +1,4 @@
-import { writable, derived, get } from 'svelte/store'
+import { writable, get } from 'svelte/store'
 import { CHARACTERS } from '../routes/platformer-logic/characters'
 import type { WeaponKind } from '../routes/platformer-logic/weaponTypes'
 
@@ -9,9 +9,6 @@ export type GameStatus = 'idle' | 'entering' | 'playing' | 'over'
 // Clicks fire and the page text is unselectable only while 'playing'; movement,
 // jump and aim work regardless of status.
 export const gameStatus = writable<GameStatus>('idle')
-
-// Convenience boolean used by the loop and layout: true only during an active run.
-export const gameStarted = derived(gameStatus, ($s) => $s === 'playing')
 
 // Pause menu: freezes the sim and shows a Continue/Quit modal. Separate from the level-up
 // pause (which forces a pick) and from a full stop — the run stays 'playing' underneath, so

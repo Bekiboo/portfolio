@@ -1,7 +1,5 @@
-import { collision, type Bounds } from './utils'
+import { GRAVITY, lerpPos, settleOnGround, type Bounds } from './utils'
 import type { Platform } from './Platform'
-
-const GRAVITY = 0.33 // matches the world gravity used by Player/Enemy/XpGem/HealthPack
 
 // A dropped credit crate — the shop currency. Bursts (rarely) from a slain enemy, tumbles to
 // the floor under gravity and rests there until walked over. Unlike XP it isn't magnetised, so
@@ -30,50 +28,17 @@ export class CreditCrate {
 		this.velocity.y += GRAVITY
 		this.pos.x += this.velocity.x * deltaTime
 		this.pos.y += this.velocity.y * deltaTime
-		this.#land(canvas, platforms)
+		settleOnGround(this, canvas, platforms)
 		if (this.grounded) {
 			this.velocity.x *= 0.86
 			this.bob += deltaTime
 		}
 	}
 
-	// Rest on the canvas floor or the top of any platform it lands on.
-	#land(canvas: Bounds, platforms: Platform[]) {
-		this.grounded = false
-		if (this.pos.y + this.height >= canvas.height) {
-			this.pos.y = canvas.height - this.height
-			this.velocity.y = 0
-			this.grounded = true
-		}
-		if (this.velocity.y >= 0) {
-			for (const platform of platforms) {
-				if (
-					collision(
-						{ left: this.pos.x, top: this.pos.y, width: this.width, height: this.height },
-						platform
-					)
-				) {
-					if (this.prevPos.y + this.height <= platform.top + 8) {
-						this.pos.y = platform.top - this.height
-						this.velocity.y = 0
-						this.grounded = true
-					}
-					break
-				}
-			}
-		}
-		if (this.pos.x < 0) {
-			this.pos.x = 0
-			this.velocity.x *= -0.4
-		} else if (this.pos.x + this.width > canvas.width) {
-			this.pos.x = canvas.width - this.width
-			this.velocity.x *= -0.4
-		}
-	}
-
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
-		const x = this.prevPos.x + (this.pos.x - this.prevPos.x) * alpha
-		let y = this.prevPos.y + (this.pos.y - this.prevPos.y) * alpha
+		const p = lerpPos(this, alpha)
+		const x = p.x
+		let y = p.y
 		if (this.grounded) y += Math.sin(this.bob * 0.08) * 1.5 // gentle idle float
 		const w = this.width
 		const h = this.height
