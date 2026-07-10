@@ -54,6 +54,7 @@ import {
 	type Upgrade
 } from './upgrades'
 import { ItemInstance, rollItemOffers, type ItemType, type ItemOffer } from './items'
+import { ARENAS, instantiateArena, makeArenaBag, validateArena } from './arenas'
 
 // Fixed-timestep physics with render interpolation ("Fix Your Timestep"): sim advances in
 // constant 60 Hz steps (deterministic, refresh-rate independent); draw() interpolates.
@@ -123,9 +124,11 @@ export class GameWorld {
 	private platforms: Platform[] = []
 	private platformsDirty = true
 	private canvasDirty = true
-	// Procedural arena ledges: a fresh random layout each wave (run start + every intermission).
+	// Live arena ledges: a hand-authored layout, swapped each wave (run start + every intermission).
 	// Merged into `platforms` by collectPlatforms(); rendered (visible=true).
 	proceduralPlatforms: Platform[] = []
+	// Shuffle-bag over the authored arenas (arenas.ts): every layout appears once before repeating.
+	private arenaBag = makeArenaBag()
 	// Next wave's ledges, pre-built at intermission and faded in (render-only, not yet collidable)
 	// as the old set fades out; promoted on hold-complete.
 	private pendingPlatforms: Platform[] = []
@@ -338,44 +341,18 @@ export class GameWorld {
 		this.platformsDirty = false
 	}
 
-	// Roll a fresh set of arena ledges: two wall-flush perch ledges (enemy spawn points, e.g. a
-	// perched turret) plus interior ledges on a regular column grid so spacing reads as designed.
-	// All visible. Caller decides if it's the live or pending layout.
-	private buildLayout(): Platform[] {
+	// Instantiate the next arena's ledges from the authored library (arenas.ts). `intro` forces the
+	// gentle wave-1 layout; otherwise the shuffle-bag picks (no immediate repeats, random mirror).
+	// Includes the two wall-flush perches (enemy spawn points). All visible; the caller decides if
+	// it's the live or pending layout.
+	private buildLayout(intro = false): Platform[] {
 		const W = this.world.width
 		const H = this.world.height
-		const thick = 20
-		const ledges: Platform[] = []
-
-		// Wall-flush perches: one per side at a jittered mid height, flush to the edge so an enemy
-		// can ride in on the wall and hold it (spawn director perches turrets here).
-		const perchW = Math.min(140, W * 0.14)
-		const perchY = () => H * (0.4 + Math.random() * 0.26)
-		const left = new Platform(perchW, thick, perchY(), 0)
-		left.visible = true
-		left.edge = 'left'
-		const right = new Platform(perchW, thick, perchY(), W - perchW)
-		right.visible = true
-		right.edge = 'right'
-		ledges.push(left, right)
-
-		// Interior ledges on a column grid: one per column, jittered horizontally + varied height so
-		// the field is evenly spaced without looking mechanical.
-		const cols = 3 + Math.floor(Math.random() * 2) // 3–4 interior ledges
-		const usableL = W * 0.18
-		const usableR = W * 0.82
-		const colW = (usableR - usableL) / cols
-		const bandTop = H * 0.36
-		const bandBot = H * 0.74
-		for (let i = 0; i < cols; i++) {
-			const w = 100 + Math.random() * 80
-			const slack = Math.max(0, colW - w - 24)
-			const colLeft = usableL + i * colW + 12 + Math.random() * slack
-			const top = bandTop + Math.random() * (bandBot - bandTop)
-			const ledge = new Platform(w, thick, top, colLeft)
-			ledge.visible = true
-			ledges.push(ledge)
-		}
+		const { arena, mirror } = intro
+			? { arena: ARENAS[0], mirror: Math.random() < 0.5 }
+			: this.arenaBag.next()
+		const ledges = instantiateArena(arena, W, H, 20, mirror)
+		if (import.meta.env.DEV) validateArena(ledges, W, H)
 		return ledges
 	}
 
@@ -930,7 +907,7 @@ export class GameWorld {
 			this.shockRings.length = 0
 			this.damageNumbers.length = 0
 			this.pendingPlatforms = []
-			this.proceduralPlatforms = this.buildLayout() // the arena the character drops into
+			this.proceduralPlatforms = this.buildLayout(true) // the gentle intro arena the character drops into
 			this.platformsDirty = true // fold in the ledges + drop the DOM platforms so it falls
 			this.enterTimer = 0
 			this.enterPickShown = false
@@ -975,7 +952,7 @@ export class GameWorld {
 			// fallback (a run without a reveal — shouldn't happen) rebuilds + snaps in.
 			if (!this.enteredFromReveal || this.proceduralPlatforms.length === 0) {
 				this.pendingPlatforms = []
-				this.proceduralPlatforms = this.buildLayout() // fresh arena for wave 1
+				this.proceduralPlatforms = this.buildLayout(true) // fresh intro arena for wave 1
 				this.platformsDirty = true
 				this.placePlayerAtSpawn()
 			}
