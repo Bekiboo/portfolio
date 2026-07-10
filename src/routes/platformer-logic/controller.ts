@@ -25,14 +25,14 @@ export const keys = {
 				keys.right = true
 				break
 			case 'KeyW':
-				// Only jump on the initial press; ignore the OS key-repeat while held,
-				// otherwise holding W would instantly consume the double jump.
+				// Jump on the initial press only; ignore OS key-repeat, else holding W
+				// would instantly consume the double jump.
 				if (!keys.up) player.jump()
 				keys.up = true
 				break
 			case 'KeyS':
-				// Rising edge only (ignore the OS key-repeat) → fire the equipped special power.
-				// `down` is still tracked for a future hold/charge power; it drives nothing today.
+				// Rising edge only → fire the equipped power. `down` is tracked for a
+				// future hold/charge power; drives nothing today.
 				if (!keys.down) keys.power = true
 				keys.down = true
 				break

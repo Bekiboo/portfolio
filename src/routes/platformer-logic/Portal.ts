@@ -1,12 +1,9 @@
 import type { EnemyKind } from './enemyTypes'
 import type { Platform } from './Platform'
 
-// Enemy rift. The old spawn director scattered enemies in from every edge one at a time —
-// hard to read and never satisfying to clear. A Portal instead telegraphs for OPEN_MS
-// (a "here it comes" beat, no enemies yet), then disgorges its queued horde one unit every
-// EMIT_MS so a clustered pack pours out of a single, legible spot, then collapses over
-// CLOSE_MS. GameWorld owns the wave-scaled stats + the enemy pool, so the Portal only holds
-// the queue and reports which kinds to materialise each tick; it never touches the store.
+// Enemy rift: telegraphs for OPEN_MS (warning beat, no enemies yet), disgorges its queued horde
+// one unit every EMIT_MS from a single legible spot, then collapses over CLOSE_MS. GameWorld owns
+// the stats + pool; the Portal only holds the queue and reports kinds to materialise each tick.
 export const PORTAL_OPEN_MS = 2000 // telegraph before the first enemy (~2s warning, per design)
 export const PORTAL_EMIT_MS = 200 // gap between disgorged units — a quick stream so it reads as a horde
 export const PORTAL_CLOSE_MS = 520 // collapse animation once the queue is empty
@@ -43,9 +40,8 @@ export class Portal {
 		this.radius = placement === 'air' ? 46 : 52
 	}
 
-	// Advance the lifecycle by `dt` ms and return the kinds emitted this tick (GameWorld turns
-	// them into Enemies at this portal's position). Usually 0 or 1 per tick, but a long frame
-	// can flush several so the stream never stalls after a tab-hide.
+	// Advance the lifecycle by `dt` ms and return the kinds emitted this tick. Usually 0 or 1, but
+	// a long frame can flush several so the stream never stalls after a tab-hide.
 	update(dt: number): EnemyKind[] {
 		this.phase += dt
 		this.timer += dt
@@ -85,21 +81,18 @@ export class Portal {
 		return 1
 	}
 
-	// A hostile fuchsia/violet rift — deliberately NOT the friendly cyan of the spawn pedestal
-	// glow, so the two never read the same. A vertical oval (taller than wide) with a dark core,
-	// a chunky pixel/cube vortex (see PREVIOUS smooth style kept below). The rift is filled
-	// cube-by-cube on a fixed grid anchored to the centre, so rings of cubes build up as it
-	// opens. Cube colour is banded by rectangular (box) distance (dark core → purple → bright
-	// fuchsia rim) and modulated by rotating spokes for a swirling pixel look; the outer ring erodes
-	// and throws off sparse flickering ember cubes. Telegraph pulses loudest while opening.
+	// Hostile fuchsia/violet rift — deliberately NOT the pedestal's friendly cyan. Filled cube-by-cube
+	// on a centre-anchored grid; cube colour banded by box distance (dark core → purple → fuchsia rim)
+	// and modulated by rotating spokes for a swirling look. Outer ring erodes and spits ember cubes;
+	// telegraph pulses loudest while opening.
 	draw(ctx: CanvasRenderingContext2D) {
 		const s = this.scale()
 		if (s <= 0.001) return
 		const rx = this.radius * s
-		// Ground rifts are shorter (door height); air rifts stay tall. 1.35 → 0.81 is ~40% lower.
+		// Ground rifts are shorter (door height); air rifts stay tall.
 		const ry = this.radius * (this.baseY != null ? 1 : 1.35) * s
-		// Ground rifts sit ON their surface (floor/ledge) and grow UPWARD out of it, so they
-		// never sink under the ground or a passerelle; air rifts float, centred on pos.
+		// Ground rifts sit ON their surface and grow UPWARD out of it (never sink under the ground);
+		// air rifts float, centred on pos.
 		const cx = this.pos.x
 		const cy = this.baseY != null ? this.baseY - ry : this.pos.y
 		const pulse = 0.5 + 0.5 * Math.sin(this.phase * 0.012)
@@ -114,17 +107,14 @@ export class Portal {
 			for (let ix = -cols; ix <= cols; ix++) {
 				const dx = ix * CUBE
 				const dy = iy * CUBE
-				// Chebyshev (box) distance → a RECTANGULAR rift: bands are concentric rectangles
-				// rather than ellipses (swap for Math.hypot for the circular version). For a ground
-				// rift the bottom is OPEN — only the upward extent counts vertically (max(0, -dy)) —
-				// so the dark core reaches the baseline with NO bottom rim: it reads as a doorway
-				// cut into the floor rather than a full rectangle sitting on it.
+				// Chebyshev (box) distance → concentric-rectangle bands (Math.hypot for circular).
+				// Ground rift's bottom is OPEN: only upward extent counts (max(0, -dy)), so the core
+				// reaches the baseline with no bottom rim — a doorway cut into the floor.
 				const ay = this.baseY != null ? Math.max(0, -dy) : Math.abs(dy)
 				const d = Math.max(Math.abs(dx) / rx, ay / ry) // 0 centre → 1 rim
 				const sx = Math.round(cx + dx - CUBE / 2)
 				const sy = Math.round(cy + dy - CUBE / 2)
-				// A ground rift emerges from its surface: the bottom row straddles the baseline (so
-				// the core sits flush on it) but nothing is painted fully below.
+				// Ground rift emerges from its surface: nothing painted fully below the baseline.
 				if (this.baseY != null && sy >= this.baseY) continue
 				if (d <= 1) {
 					const swirl = 0.5 + 0.5 * Math.sin(Math.atan2(dy, dx) * 3 - t * 6 + d * 5)
@@ -150,8 +140,8 @@ export class Portal {
 	}
 }
 
-// Deterministic 0..1 hash (no Math.random, so the flicker is stable within a time slice and
-// survives resume). Classic fract(sin·large-constant) pixel-noise.
+// Deterministic 0..1 hash so the flicker is stable within a time slice and survives resume.
+// Classic fract(sin·large-constant) pixel-noise.
 function cubeNoise(a: number, b: number, c: number): number {
 	const n = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453
 	return n - Math.floor(n)

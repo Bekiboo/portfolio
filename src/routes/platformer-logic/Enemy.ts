@@ -9,45 +9,44 @@ import type { Player } from './Player'
 
 export type { EnemyKind } from './enemyTypes'
 
-const DEADZONE = 8 // px around the target where the enemy stops nudging (kills the left/right vibration)
-const SEPARATION_GAP = 34 // enemies closer than this get pushed apart so they don't stack into one blob
-const SEPARATION_PUSH = 0.6 // how hard overlapping neighbours shove each other per step
-const SHOOT_MIN = 180 // a shooter backs off if the player gets closer than this
-const SHOOT_MAX = 340 // ...and closes in if the player is farther than this
-// Rolling turret: trundles a short step, stops, telegraphs, then fires a directional fan.
-const TURRET_ROLL_SPEED = 0.7 // px/step it trundles at (slow)
+const DEADZONE = 8 // px around the target where the enemy stops nudging (kills jitter)
+const SEPARATION_GAP = 34 // enemies closer than this get pushed apart
+const SEPARATION_PUSH = 0.6 // repulsion strength per step
+const SHOOT_MIN = 180 // shooter backs off if the player is closer than this
+const SHOOT_MAX = 340 // ...and closes in if farther than this
+// Rolling turret: trundles a step, stops, telegraphs, then fires a directional fan.
+const TURRET_ROLL_SPEED = 0.7 // px/step (slow)
 const TURRET_STEP = 64 // px advanced per jerky step
-const TURRET_MARGIN = 44 // keep this far from the canvas edges when stopping
+const TURRET_MARGIN = 44 // keep this far from canvas edges when stopping
 const TURRET_AIM_STEPS = 40 // stop-and-telegraph duration before a burst
-const TURRET_AIM_FAST = 3 // idle ticksPerFrame during the 2nd half of the telegraph (sped-up = the tell)
-const TURRET_FIRE_STEPS = 24 // hold on the recoil/attack frames after firing
+const TURRET_AIM_FAST = 3 // idle ticksPerFrame during 2nd half of telegraph (the tell)
+const TURRET_FIRE_STEPS = 24 // hold on recoil frames after firing
 const TURRET_FLIP_CHANCE = 0.28 // chance to turn around after a burst
 const TURRET_BOLTS: number = 4 // bolts per directional fan
 const TURRET_SPREAD = 0.55 // half-arc of the fan (rad)
 const TURRET_BOLT_SPEED = 3.5
-const DRONE_ATTACK_STEPS = 22 // how long the drone holds its bomb-drop frames after a release
+const DRONE_ATTACK_STEPS = 22 // steps the drone holds bomb-drop frames after a release
 const CHARGE_COOLDOWN = 150 // charger: steps between dashes
 const CHARGE_WIND = 16 // charger: telegraph wind-up before a dash
 const CHARGE_DASH = 16 // charger: dash duration
 const CHARGE_DASH_MULT = 3.4 // charger: speed multiplier during a dash
-const FRAME_W = 48 // sprite-sheet frame size — every character sheet shares this
+const FRAME_W = 48 // character sheet frame size (shared)
 const FRAME_H = 80
-// Elite modifier (spawned at wave milestones, see GameWorld): a scaled-up, tankier, harder-hitting
-// version of any kind, marked with a pulsing aura and worth a lot more XP + a guaranteed credit drop.
+// Elite modifier (spawned at wave milestones, see GameWorld): scaled-up, tankier version
+// of any kind, with a pulsing aura and a guaranteed credit drop.
 export const ELITE_SIZE_MUL = 1.45 // hitbox + sprite scale-up (GameWorld reuses this to place feet on the floor)
-const ELITE_HEALTH_MUL = 6 // HP multiplier — a genuine bullet-sponge beat
-const ELITE_DAMAGE_BONUS = 1 // flat extra contact/shot damage
-const ELITE_XP_MUL = 5 // fat gem reward
+const ELITE_HEALTH_MUL = 6
+const ELITE_DAMAGE_BONUS = 1
+const ELITE_XP_MUL = 5
 
-// Seven enemy flavours sharing one body, all defined by data in enemyTypes.ts.
-// Movement differs per `behavior`; drawing, hits and animation are shared. (Non-biker
-// kinds share the cyborg sprite for now — a placeholder distinguished by size.)
+// Enemy flavours sharing one body, defined by data in enemyTypes.ts. Movement differs per
+// `behavior`; drawing/hits/animation are shared. (Non-biker kinds share the cyborg sprite.)
 export class Enemy {
 	kind: EnemyKind
 	behavior: Behavior
 	character: string
 	pos: { x: number; y: number }
-	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
+	prevPos: { x: number; y: number } // position before the last physics step (render interp)
 	velocity: { x: number; y: number }
 	height: number
 	width: number
@@ -56,7 +55,7 @@ export class Enemy {
 	separatesVertically: boolean // spread on the Y axis too (flyers)?
 	fireInterval: number // steps between shots/drops (0 for non-firing kinds)
 	speed: number
-	damage: number // contact/shot damage dealt to the player (scaled by wave at spawn)
+	damage: number // contact/shot damage to the player (wave-scaled at spawn)
 	xpValue: number // value of the gem dropped on death
 	image!: HTMLImageElement
 	maxFrame: number
@@ -75,18 +74,18 @@ export class Enemy {
 	dashDir = 1
 	// Sprite framing/anchoring (see enemyTypes: character sheets vs 48×48 gadget sheets).
 	anchor: 'topLeft' | 'foot' | 'center' = 'topLeft'
-	frameW = FRAME_W // source-frame size of the *current* animation
+	frameW = FRAME_W // source-frame size of the current animation
 	frameH = FRAME_H
-	currentAnim = '' // active animation key (gadget kinds switch between idle/walk/attack)
+	currentAnim = '' // active animation key (gadget kinds switch idle/walk/attack)
 	// Rolling-turret state machine
 	turretState: 'roll' | 'aim' | 'fire' = 'roll'
 	turretTimer = 0
 	turretDir = 0 // cannon facing / roll direction (+1 right, −1 left; 0 = uninitialised)
 	turretTargetX = 0
-	perched = false // a wall-flush turret: never rolls (so it can't fall off its perch), just aims/fires inward
-	attackAnim = 0 // frames left showing a gadget's 'attack' animation (drone bomb-drop)
-	elite = false // a milestone miniboss: scaled up, tankier, drawn with an aura (see ELITE_* consts)
-	auraPhase = 0 // pulsing-aura clock for elites (advanced in draw)
+	perched = false // wall-flush turret: never rolls (can't fall off), just aims/fires inward
+	attackAnim = 0 // frames left on a gadget's 'attack' animation (drone bomb-drop)
+	elite = false // milestone miniboss (see ELITE_* consts)
+	auraPhase = 0 // pulsing-aura clock for elites
 
 	constructor(
 		pos: { x: number; y: number },
@@ -97,8 +96,7 @@ export class Enemy {
 		this.behavior = t.behavior
 		this.character = t.sprite
 		this.anchor = t.spriteAnchor ?? 'topLeft'
-		// Character sheets animate on 'run'; gadget sheets (turret/drone) have no 'run'
-		// and start idle, switching animations from their behaviour.
+		// Character sheets animate on 'run'; gadget sheets (turret/drone) start idle.
 		this.currentAnim = hasSprite(this.character, 'run') ? 'run' : 'idle'
 		const sprite = getSprite(this.character, this.currentAnim)
 		this.image = sprite.img
@@ -115,7 +113,7 @@ export class Enemy {
 		this.pos = pos
 		this.prevPos = { x: pos.x, y: pos.y }
 		this.speed = opts.speed ?? t.speed
-		// Patrol kinds start with horizontal velocity; non-gravity kinds hover (vy 0).
+		// Patrol kinds start with horizontal velocity; non-gravity kinds hover.
 		this.velocity = {
 			x: t.patrol ? this.speed : 0,
 			y: t.gravity ? 1 : 0
@@ -124,8 +122,8 @@ export class Enemy {
 		this.maxHealth = this.health
 		this.damage = opts.damage ?? t.damage
 		this.xpValue = t.xp
-		// Elite: fold the miniboss modifiers over the (already wave-scaled) baselines. Size grows
-		// last so the hitbox/sprite scale together; GameWorld places the feet using ELITE_SIZE_MUL.
+		// Elite: fold miniboss modifiers over the (wave-scaled) baselines. Size last so hitbox
+		// and sprite scale together; GameWorld places feet using ELITE_SIZE_MUL.
 		if (opts.elite) {
 			this.elite = true
 			this.health = Math.round(this.health * ELITE_HEALTH_MUL)
@@ -136,8 +134,7 @@ export class Enemy {
 			this.height = Math.round(this.height * ELITE_SIZE_MUL)
 			this.spriteScale *= ELITE_SIZE_MUL
 		}
-		// Stagger firing kinds so a wave doesn't shoot in unison; randomise the
-		// charger's first dash so a pack doesn't dash as one.
+		// Stagger firing/dashing so a wave doesn't act in unison.
 		if (this.behavior === 'charger') this.dashCd = Math.floor(Math.random() * CHARGE_COOLDOWN)
 		else if (this.fireInterval) this.fireCooldown = Math.floor(Math.random() * this.fireInterval)
 	}
@@ -164,8 +161,8 @@ export class Enemy {
 		if (this.separates) this.#separate(others, deltaTime)
 	}
 
-	// Ground chaser: nudge horizontally toward the player (with a deadzone so it
-	// stops jittering once it's underneath), then fall and land on platforms.
+	// Ground chaser: nudge horizontally toward the player (deadzone stops jitter
+	// when underneath), then fall and land on platforms.
 	#updateGround(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		if (Math.abs(dx) > DEADZONE) {
@@ -177,8 +174,8 @@ export class Enemy {
 		this.#keepWithinCanvas(canvas)
 	}
 
-	// Homing flyer: drift straight at the player's centre (with a gentle hover
-	// weave), ignoring gravity and platforms. Clamped to stay on screen.
+	// Homing flyer: drift at the player's centre with a gentle hover weave,
+	// ignoring gravity/platforms. Clamped to screen.
 	#updateFlyer(canvas: Bounds, target: Player, deltaTime: number) {
 		this.bob += deltaTime
 		const cx = target.pos.x + target.width / 2
@@ -195,9 +192,8 @@ export class Enemy {
 		this.pos.y = Math.max(0, Math.min(this.pos.y, canvas.height - this.height))
 	}
 
-	// Ground gunner: hold a standoff band from the player (back off if too close,
-	// close in if too far), face them, and fire hostile bolts on a cooldown while
-	// fully on-screen. Reuses gravity + platform landing like the biker.
+	// Ground gunner: hold a standoff band (back off if close, close in if far), face
+	// the player, and fire on cooldown while fully on-screen. Gravity/landing like the biker.
 	#updateShooter(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		this.direction = dx < 0 ? 'left' : 'right'
@@ -217,9 +213,8 @@ export class Enemy {
 		}
 	}
 
-	// Hovering bomber: patrols overhead (bouncing off the screen edges, steering
-	// back in if it drifts off) and rains gravity bombs — it does NOT aim at the
-	// player, so its job is area denial that forces the camper to keep moving.
+	// Hovering bomber: patrols overhead and rains gravity bombs. Does NOT aim — area
+	// denial that forces the camper to keep moving.
 	#updateBomber(canvas: Bounds, deltaTime: number) {
 		this.bob += deltaTime
 		// Steer back toward centre near an edge; otherwise cruise.
@@ -238,7 +233,7 @@ export class Enemy {
 			this.fireCooldown = this.fireInterval
 			this.attackAnim = DRONE_ATTACK_STEPS
 		}
-		// Show the bomb-drop frames for a beat after a release, otherwise hover (idle).
+		// Hold bomb-drop frames for a beat after a release, else hover (idle).
 		if (this.attackAnim > 0) {
 			this.attackAnim--
 			this.#setAnim('attack')
@@ -247,14 +242,11 @@ export class Enemy {
 		}
 	}
 
-	// Rolling turret: trundles in from a side, stops fully before doing anything hostile,
-	// speeds up its idle as a tell, then fires a fan of bolts toward its cannon side.
-	// Advances toward the interior in jerky steps and sometimes turns around. It never
-	// fires while moving — hostile output only ever happens from a dead stop.
+	// Rolling turret: trundles in from a side in jerky steps, stops fully, speeds up its idle
+	// as a tell, then fires a fan toward its cannon side. Never fires while moving.
 	#updateTurret(canvas: Bounds, platforms: Platform[], deltaTime: number) {
-		// Lazy init: face into the map from whichever side it spawned on. A perched turret
-		// (wall-flush, on an edge ledge) never rolls — it holds its spot and only aims/fires,
-		// so it can't trundle off and fall.
+		// Lazy init: face into the map from the spawn side. A perched turret never rolls
+		// (holds its spot, only aims/fires) so it can't trundle off a ledge.
 		if (this.turretDir === 0) {
 			this.turretDir = this.pos.x < canvas.width / 2 ? 1 : -1
 			this.direction = this.turretDir < 0 ? 'left' : 'right'
@@ -272,8 +264,8 @@ export class Enemy {
 			const dx = this.turretTargetX - this.pos.x
 			const step = Math.sign(dx) * TURRET_ROLL_SPEED * deltaTime
 			if (Math.abs(step) >= Math.abs(dx)) {
-				// Reached the stop. Pick the burst direction now (turn around at a wall, or
-				// at random) so a wall-hugging turret always fires into the map.
+				// Reached the stop. Pick burst direction now (flip at a wall or at random)
+				// so a wall-hugging turret always fires into the map.
 				this.pos.x = this.turretTargetX
 				const minX = TURRET_MARGIN
 				const maxX = canvas.width - this.width - TURRET_MARGIN
@@ -288,7 +280,7 @@ export class Enemy {
 				this.pos.x += step
 			}
 		} else if (this.turretState === 'aim') {
-			// Stopped: idle normally, then sped-up for the second half — the firing tell.
+			// Stopped: idle, then sped-up for the second half — the firing tell.
 			if (this.turretTimer > TURRET_AIM_STEPS / 2) this.#setAnim('idle')
 			else this.#setAnim('idle', TURRET_AIM_FAST)
 			if (--this.turretTimer <= 0) {
@@ -298,8 +290,7 @@ export class Enemy {
 				this.turretTimer = TURRET_FIRE_STEPS
 			}
 		} else {
-			// Hold on the recoil frames, then trundle the next jerky step — or, if perched,
-			// just re-arm in place for the next burst.
+			// Hold recoil frames, then roll the next step — or, if perched, re-arm in place.
 			this.#setAnim('attack')
 			if (--this.turretTimer <= 0) {
 				if (this.perched) {
@@ -317,8 +308,7 @@ export class Enemy {
 		this.#keepWithinCanvas(canvas)
 	}
 
-	// Aim the next jerky step one TURRET_STEP toward the cannon, clamped to a margin so
-	// the turret always comes to rest fully on-screen.
+	// Next step: one TURRET_STEP toward the cannon, clamped to a margin so it rests on-screen.
 	#setTurretRollTarget(canvas: Bounds) {
 		const minX = TURRET_MARGIN
 		const maxX = canvas.width - this.width - TURRET_MARGIN
@@ -326,8 +316,8 @@ export class Enemy {
 		this.turretTargetX = Math.max(minX, Math.min(maxX, target))
 	}
 
-	// Charger: approach like a biker, then periodically wind up (telegraphed) and
-	// dash horizontally at high speed toward the player before recovering.
+	// Charger: approach like a biker, then periodically wind up (telegraphed) and dash
+	// horizontally at high speed toward the player before recovering.
 	#updateCharger(canvas: Bounds, target: Player, platforms: Platform[], deltaTime: number) {
 		const dx = target.pos.x + target.width / 2 - (this.pos.x + this.width / 2)
 		const dy = target.pos.y - this.pos.y
@@ -381,12 +371,11 @@ export class Enemy {
 		effectsStore.add(new Effect({ x: this.pos.x, y: this.pos.y + 28 }, 'smoke_12'))
 	}
 
-	// Fire a fan of hostile bolts toward the cannon side only (not a full ring). A
-	// vertical spread around the horizontal, so it threatens perches above and the floor
-	// below on that side; you dodge by crossing behind it or slipping between the bolts.
+	// Fire a fan of hostile bolts toward the cannon side only (not a full ring), spread
+	// vertically so it threatens perches above and floor below; dodge by crossing behind it.
 	#fireTurretBurst() {
-		// Muzzle at the cannon: the sprite is foot-anchored, so its vertical centre (≈ the
-		// barrel) sits at pos.y + height − dh/2; nudge horizontally toward the cannon tip.
+		// Muzzle at the cannon: foot-anchored sprite, so barrel ≈ pos.y + height − dh/2;
+		// nudge horizontally toward the cannon tip.
 		const dh = this.frameH * this.spriteScale
 		const muzzleX = this.pos.x + this.width / 2 + this.turretDir * this.width * 0.35
 		const muzzleY = this.pos.y + this.height - dh / 2
@@ -415,8 +404,8 @@ export class Enemy {
 		)
 	}
 
-	// Soft mutual repulsion so enemies chasing the same point fan out instead of
-	// stacking. Ground units only spread horizontally; flyers spread in both axes.
+	// Soft mutual repulsion so enemies chasing the same point fan out. Ground units
+	// spread horizontally only; flyers spread in both axes.
 	#separate(others: Enemy[], deltaTime: number) {
 		let pushX = 0
 		let pushY = 0
@@ -440,7 +429,7 @@ export class Enemy {
 		this.#animate(deltaTime)
 		if (this.hitFlash > 0) this.hitFlash--
 
-		// Elite aura: a pulsing amber halo under the sprite so a miniboss reads at a glance.
+		// Elite aura: pulsing amber halo so a miniboss reads at a glance.
 		if (this.elite) {
 			this.auraPhase += deltaTime
 			const cx = x + this.width / 2
@@ -459,19 +448,18 @@ export class Enemy {
 
 		const scale = this.spriteScale
 		const winding = this.behavior === 'charger' && this.dashState === 'wind'
-		// Whether to mirror the source (all art faces right, so flip when facing left).
+		// All art faces right, so flip when facing left.
 		const flip = this.direction === 'left'
 
 		ctx.save()
-		// Flash bright for a few frames after a hit; a charger flashes brighter
-		// while winding up so its dash is telegraphed.
+		// Flash bright after a hit; brighter while a charger winds up (telegraphs the dash).
 		if (this.hitFlash > 0) ctx.filter = 'brightness(2.6)'
 		else if (winding) ctx.filter = 'brightness(1.9)'
 
 		let topY: number
 		if (this.anchor === 'topLeft') {
-			// Character sheet: art fills a hitbox-sized box from the top-left; the flip
-			// mirrors around the hitbox's right edge (unchanged legacy path).
+			// Character sheet: art fills a hitbox-sized box from top-left; flip mirrors
+			// around the hitbox's right edge (legacy path).
 			topY = y
 			const dw = this.width * scale
 			const dh = this.height * scale
@@ -486,7 +474,7 @@ export class Enemy {
 			}
 		} else {
 			// Gadget sheet (48×48): draw the square frame aspect-correct, centred on the
-			// hitbox, either footed on the floor (turret) or centred (hovering drone).
+			// hitbox, footed on the floor (turret) or centred (hovering drone).
 			const dw = this.frameW * scale
 			const dh = this.frameH * scale
 			const drawX = x + this.width / 2 - dw / 2
@@ -504,14 +492,14 @@ export class Enemy {
 		}
 		ctx.restore()
 
-		// A slim chip bar appears once an enemy has taken damage.
+		// Slim chip bar appears once an enemy has taken damage.
 		if (this.maxHealth > 1 && this.health < this.maxHealth) this.#drawHealthBar(ctx, x, topY)
 	}
 
 	#drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number) {
 		const barW = this.width * 1.4 // ~70% of the 2× sprite width
 		const barH = 3
-		const bx = x + this.width - barW / 2 // centred over the sprite
+		const bx = x + this.width - barW / 2 // centred
 		const by = y - 2
 		const pct = Math.max(0, this.health / this.maxHealth)
 		ctx.save()
@@ -527,9 +515,8 @@ export class Enemy {
 		this.health -= damage
 		this.hitFlash = 6
 		if (this.health <= 0) {
-			// Symmetric burst (smoke_14) truly centred on the enemy's body — `centered`
-			// fixes the draw anchor so it sits on the middle, not the low footfall
-			// anchor (smoke_12) used for pickups/footfalls elsewhere.
+			// `centered` anchors the burst on the body's middle, not the low footfall
+			// anchor (smoke_12) used for pickups elsewhere.
 			effectsStore.add(
 				new Effect(
 					{ x: this.pos.x + this.width / 2, y: this.pos.y + this.height / 2 },
@@ -543,10 +530,9 @@ export class Enemy {
 		return false
 	}
 
-	// Switch the active animation (gadget kinds only — characters stay on 'run'). Resets
-	// the frame cursor on a real change; an optional `speed` overrides the sheet's cadence
-	// (used to accelerate the turret's idle into a firing tell). No-ops if the sheet lacks
-	// the animation, so a kind never crashes on a missing entry.
+	// Switch the active animation (gadget kinds only — characters stay on 'run'). Resets the
+	// frame cursor on a real change; optional `speed` overrides the sheet cadence (turret tell).
+	// No-ops if the sheet lacks the animation.
 	#setAnim(name: string, speed?: number) {
 		if (!hasSprite(this.character, name)) return
 		if (name !== this.currentAnim) {
@@ -585,8 +571,8 @@ export class Enemy {
 					platform
 				)
 			) {
-				// Only resolve landing on top; ground units never move up, so ignore
-				// head bumps and let them pass platforms horizontally.
+				// Only resolve landing on top; ground units never move up, so ignore head
+				// bumps and let them pass platforms horizontally.
 				if (this.velocity.y > 0) {
 					this.velocity.y = 0
 					this.pos.y = platform.top - this.height

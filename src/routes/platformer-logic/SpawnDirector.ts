@@ -18,17 +18,15 @@ import type { GameWorld } from './GameWorld.svelte'
 const MAX_ACTIVE_PORTALS = 2 // concurrent rifts on the field — keeps spawns clustered and legible
 const MAX_HORDE = 6 // most enemies a single rift disgorges before it collapses
 
-// The wave spawn director, split out of GameWorld: it decides WHAT to spawn (deficit/floors/ground
-// brain), WHERE (perches, air/ground rifts) and drives the open portals. It reads the arena it
-// spawns into (world bounds, procedural ledges, the player's position) and the elite burst ring off
-// its host GameWorld; everything else (enemy pools, wave tuning) it owns via the module registries.
+// The wave spawn director: decides WHAT to spawn (deficit/floors/ground brain), WHERE (perches,
+// air/ground rifts) and drives the open portals. Reads the arena + elite burst ring off its host
+// GameWorld; owns enemy pools and wave tuning via the module registries.
 export class SpawnDirector {
 	private spawnSide = 0 // alternates the side each enemy / rift enters from
 
 	constructor(private gw: GameWorld) {}
 
-	// A wall-flush perch ledge with no turret currently riding it (so two turrets don't
-	// stack on the same edge). null if every perch is taken or the layout has none.
+	// A wall-flush perch ledge with no turret on it (so two turrets don't stack). null if all taken.
 	private freeEdgePerch(): Platform | null {
 		const perches = this.gw.proceduralPlatforms.filter((p) => p.edge)
 		const free = perches.filter(
@@ -43,9 +41,8 @@ export class SpawnDirector {
 	private spawnEnemy(kind: EnemyKind) {
 		const w = get(wave)
 		const t = ENEMY_TYPES[kind]
-		// Turrets ride a wall-flush perch when one is free: dropped onto the edge ledge, they
-		// can't fall and just fire inward (perched behaviour in Enemy.#updateTurret). With no
-		// free perch they fall back to the rolling floor turret below.
+		// Turrets ride a free wall-flush perch: can't fall, fire inward (Enemy.#updateTurret).
+		// No free perch → fall through to the rolling floor turret below.
 		if (kind === 'turret') {
 			const perch = this.freeEdgePerch()
 			if (perch) {
@@ -61,16 +58,15 @@ export class SpawnDirector {
 		}
 		// Alternate the side each enemy walks/flies in from.
 		const fromLeft = this.spawnSide++ % 2 === 0
-		// 'onscreen' kinds (the anchored turret) deploy in view; the rest enter from
-		// off the nearest side.
+		// 'onscreen' kinds deploy in view; the rest enter from off the nearest side.
 		const x =
 			t.spawnX === 'onscreen'
 				? this.gw.world.width * (0.15 + Math.random() * 0.7)
 				: fromLeft
 					? -60
 					: this.gw.world.width + 60
-		// 'air' kinds enter high in an altitude band; ground kinds at floor level —
-		// offset by their own height so a tall brute doesn't spawn sunk into the floor.
+		// 'air' kinds enter in an altitude band; ground kinds at floor level, offset by their
+		// own height so a tall brute doesn't spawn sunk into the floor.
 		const y =
 			t.spawnY === 'air' ? this.gw.world.height * (t.altitude ?? 0.32) : this.gw.world.height - t.height
 		// Chase kinds scale speed with the wave (waveSpeedMul); fixed kinds use their base.
@@ -84,28 +80,24 @@ export class SpawnDirector {
 	}
 
 	// --- Portal-based spawning ------------------------------------------------
-	// Enemies no longer trickle in one-by-one from the edges. On each spawn tick the director
-	// assembles a small BATCH (up to MAX_HORDE) using the same floors/deficit/ground brain as
-	// before, then tears open a rift to carry it: air kinds get an air rift, ground kinds a
-	// ground rift, turrets keep perching directly. The rift telegraphs, then pours the pack
-	// out — clustered and readable instead of scattered.
+	// Each spawn tick assembles a BATCH (up to MAX_HORDE) via the floors/deficit/ground brain, then
+	// tears open a rift to carry it (air/ground rift by kind; turrets perch directly). The rift
+	// telegraphs then pours the pack out clustered, instead of trickling enemies from every edge.
 	private countKind(k: EnemyKind) {
 		return enemiesStore.list.filter((e) => e.kind === k).length
 	}
 
-	// Enemies still queued inside open rifts (not yet materialised). Counted toward the field
-	// so the director doesn't overfill while a telegraph is still winding up.
+	// Enemies still queued inside open rifts. Counted toward the field so the director doesn't
+	// overfill while a telegraph is still winding up.
 	private queuedCount(k?: EnemyKind) {
 		let n = 0
 		for (const p of portalsStore.list) n += k ? p.queue.filter((q) => q === k).length : p.queue.length
 		return n
 	}
 
-	// Pick the single best kind to add given the live field, the rifts' pending queues, and a
-	// `projected` tally of what's already in the batch being assembled. Unmet pressure floors
-	// win first (weighted by how far below target they sit, so a totally-absent bomber isn't
-	// starved by a flyer that's only one short); otherwise draw fodder from the theme's ground
-	// pool (repeats weight the odds — ['biker','biker','charger'] is 2:1 bikers).
+	// Pick the best kind to add, counting live + queued + `projected` (this batch). Unmet floors
+	// win first, weighted by how far below target they sit (so an absent bomber isn't starved by a
+	// flyer one short); else draw ground fodder (repeats weight the odds).
 	private pickSpawnKind(def: WaveDef, projected: Map<EnemyKind, number>): EnemyKind | null {
 		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k) + (projected.get(k) ?? 0)
 		const deficits = Object.entries(def.floors ?? {})
@@ -126,13 +118,12 @@ export class SpawnDirector {
 		return def.ground.length ? def.ground[Math.floor(Math.random() * def.ground.length)] : null
 	}
 
-	// Keep the field topped up to the wave cap. While a rift can still be opened and the field
-	// (live + queued) is under cap, assemble a batch and open rift(s) for it. If the field is
-	// capped but a pressure floor is unmet, retire the ground unit stuck furthest below a
-	// camping player and open a small rift for the missing vector — no spot stays safe.
+	// Keep the field topped up to the wave cap: while a rift can open and the field (live + queued)
+	// is under cap, assemble a batch and open rift(s). If capped but a floor is unmet, cull and rift
+	// in the missing vector (see cullForMissingFloor).
 	spawnFromBudget() {
 		const def = waveDef(get(wave))
-		if (portalsStore.list.length >= MAX_ACTIVE_PORTALS) return // let the open rifts finish first
+		if (portalsStore.list.length >= MAX_ACTIVE_PORTALS) return // let open rifts finish first
 		const effective = enemiesStore.list.length + this.queuedCount()
 		if (effective >= def.cap) {
 			this.cullForMissingFloor(def)
@@ -150,8 +141,8 @@ export class SpawnDirector {
 		if (batch.length) this.openPortalsForBatch(batch)
 	}
 
-	// Field is capped and a pressure floor is still unmet: cull the stuck camper and rift in
-	// the missing vector.
+	// Capped but a floor unmet: cull the ground unit stuck furthest below a camping player and rift
+	// in the missing vector, so no spot stays safe.
 	private cullForMissingFloor(def: WaveDef) {
 		const total = (k: EnemyKind) => this.countKind(k) + this.queuedCount(k)
 		const missing = Object.entries(def.floors ?? {})
@@ -174,8 +165,7 @@ export class SpawnDirector {
 		}
 	}
 
-	// Split a batch by placement and open the rift(s) to carry it. Turrets don't ride portals —
-	// they perch directly (a single, readable unit, not part of the dispersal problem).
+	// Split a batch by placement and open the rift(s) to carry it. Turrets perch directly instead.
 	openPortalsForBatch(batch: EnemyKind[]) {
 		const air: EnemyKind[] = []
 		const ground: EnemyKind[] = []
@@ -188,9 +178,8 @@ export class SpawnDirector {
 		if (ground.length) this.openPortal('ground', ground)
 	}
 
-	// Choose where a rift tears open. Air rifts hover in the altitude band on an alternating
-	// side; ground rifts sit at floor level at a screen edge (preferred), or sometimes ride a
-	// visible ledge (edge perches first) so a pack can drop in from a platform.
+	// Choose where a rift tears open. Air rifts hover in the altitude band on an alternating side;
+	// ground rifts sit at a screen edge, or sometimes ride a visible ledge (edge perches first).
 	private pickPortalSite(placement: PortalPlacement): { pos: { x: number; y: number }; anchor: Platform | null } {
 		const W = this.gw.world.width
 		const H = this.gw.world.height
@@ -210,14 +199,14 @@ export class SpawnDirector {
 
 	private openPortal(placement: PortalPlacement, kinds: EnemyKind[]) {
 		const { pos, anchor } = this.pickPortalSite(placement)
-		// Ground rifts rise out of their surface (a ledge top, else the canvas floor); air rifts
-		// float free (null). Keeps the rift from sinking under the ground or a passerelle.
+		// Ground rifts rise out of their surface (ledge top, else canvas floor) so they don't sink
+		// under the ground; air rifts float free (null).
 		const baseY = placement === 'air' ? null : anchor ? anchor.top : this.gw.world.height
 		portalsStore.add(new Portal(pos, placement, kinds, anchor, baseY))
 	}
 
-	// Build a wave-scaled Enemy of `kind` at (x, y). Shared by the rift emitter and the direct
-	// turret spawn so toughness/speed ramps stay in one place.
+	// Build a wave-scaled Enemy at (x, y). Shared by the rift emitter and direct turret spawn so the
+	// toughness/speed ramps stay in one place.
 	private makeEnemy(kind: EnemyKind, x: number, y: number, elite = false): Enemy {
 		const w = get(wave)
 		const t = ENEMY_TYPES[kind]
@@ -228,9 +217,9 @@ export class SpawnDirector {
 		)
 	}
 
-	// Spawn a single ELITE of `kind` at wave milestones (see startNextWave): a scaled-up miniboss
-	// dropped centre-stage with a burst + shock ring, rather than trickled in through a rift. Ground
-	// kinds get their feet on the floor (using the elite size-up); air kinds hang in the band.
+	// Spawn a single ELITE at wave milestones (see startNextWave): a scaled-up miniboss dropped
+	// centre-stage with a burst + shock ring. Ground kinds land on the floor (elite size-up); air
+	// kinds hang in the band.
 	spawnElite(kind: EnemyKind) {
 		const t = ENEMY_TYPES[kind]
 		const eh = t.height * ELITE_SIZE_MUL
@@ -245,8 +234,8 @@ export class SpawnDirector {
 		effectsStore.add(new Effect({ x: cx, y: cy }, 'smoke_14', { centered: true }))
 	}
 
-	// A rift released a unit: drop it into the world at the rift's mouth (centred for air,
-	// on the ledge for a platform rift, at floor level otherwise) and let it behave normally.
+	// A rift released a unit: drop it at the rift's mouth (centred for air, on the ledge for a
+	// platform rift, at floor level otherwise).
 	private materializeFromPortal(portal: Portal, kind: EnemyKind) {
 		const t = ENEMY_TYPES[kind]
 		let x: number
@@ -265,8 +254,7 @@ export class SpawnDirector {
 		enemiesStore.add(this.makeEnemy(kind, x, y))
 	}
 
-	// Advance every open rift, materialise whatever it emits this frame, and retire the ones
-	// that have finished collapsing.
+	// Advance every open rift, materialise what it emits this frame, retire the collapsed ones.
 	updatePortals(frameTime: number) {
 		for (const portal of portalsStore.list.slice()) {
 			for (const kind of portal.update(frameTime)) this.materializeFromPortal(portal, kind)

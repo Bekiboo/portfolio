@@ -6,10 +6,8 @@ import { POWER_TYPES, type PowerKind } from './powerTypes'
 import type { Weapon } from './Weapon'
 import type { Power } from './Power'
 
-// Run-scoped tunables. Each starts at its base every run (GameWorld.resetUpgrades)
-// and is bumped by the level-up upgrades below. The caps keep the snowball from
-// trivialising the game (an old build let a player stack 20 pinpoint projectiles
-// and vacuum the whole map).
+// Run-scoped tunables — reset to base each run (GameWorld.resetUpgrades), bumped by the upgrades
+// below. Caps keep the snowball from trivialising the game.
 export const BASE_INVULN = 72 // ~1.2s of i-frames after a hit
 export const BASE_MAGNET = 48 // XP-gem pickup radius (px) — small, so the player must sweep the floor
 export const BASE_JUMP = 8 // jump velocity at lvl 1 (Spring raises it)
@@ -38,14 +36,11 @@ export const MAX_LIFESTEAL = 0.5 // life-steal proc-chance cap
 export const MAX_RANGE_BONUS = 360 // cap on the global engagement-range bonus
 export const MIN_FIRE_MUL = 0.4 // floor on the global cadence multiplier (Attack Speed)
 
-// On each level-up the game freezes and offers 3 of these at random. Most stack
-// indefinitely (VS-style); Bandage-style heals are handled by ground med-kits, not
-// here. `apply`/`available` take the GameWorld so an upgrade can mutate run state.
+// On each level-up the game offers 3 of these at random. Most stack indefinitely (VS-style).
+// `apply`/`available` take the GameWorld so an upgrade can mutate run state.
 export type UpgradeKind = 'atk' | 'def' | 'util' | 'weapon' | 'power'
-// Economy split (roadmap chantier 2): 'generic' upgrades are the forced VS-style
-// XP rewards (HP, speed, jump, magnet, regen, shield, global cadence); 'weapon'/'power'
-// upgrades are the *chosen* ones that will move to the paid credits shop (chantier 5).
-// Every upgrade is tagged now so the migration is a one-line flip of WEAPON_UPGRADES_IN_XP.
+// Economy split: 'generic' = forced VS-style XP rewards; 'weapon'/'power' = chosen ones that will
+// move to the paid credits shop. Tagged now so the migration is a one-line flip.
 export type UpgradeScope = 'generic' | 'weapon' | 'power'
 export interface Upgrade {
 	id: string
@@ -58,12 +53,9 @@ export interface Upgrade {
 	weight?: (lvl: number) => number // rarity: higher = commoner. Power spikes thin out with level.
 }
 
-// The XP pool is now purely Brotato-style GLOBAL CHARACTER STATS (roadmap: XP = forced generic
-// progression). Per-weapon tuning (cadence/spread/bolt count…) and per-power tuning live in the
-// paid intermission shop instead (WEAPON_SHOP / POWER_SHOP below), so nothing here touches a
-// single weapon — every pick modifies the character. GameWorld's combat resolution reads these
-// stat fields (bonusDamage, critChance, dodgeChance, armorReduction, lifeStealChance, rangeBonus,
-// fireRateMul, luck); Max HP / Speed / Regen bump the HP store / player.speed / regenPerStep.
+// The XP pool is purely global CHARACTER STATS — every pick modifies the character, never a single
+// weapon (per-weapon/power tuning lives in the paid shop below). GameWorld's combat resolution
+// reads these stat fields; Max HP / Speed / Regen bump the HP store / player.speed / regenPerStep.
 export const UPGRADES: Upgrade[] = [
 	// --- Offense ---
 	{ id: 'damage', name: 'Dégâts', desc: '+1 dégât à chaque tir', kind: 'atk', scope: 'generic',
@@ -90,7 +82,7 @@ export const UPGRADES: Upgrade[] = [
 	{ id: 'dodge', name: 'Esquive', desc: "+5% de chance d'esquiver un coup", kind: 'def', scope: 'generic',
 		apply: (w) => (w.dodgeChance = Math.min(MAX_DODGE, w.dodgeChance + 0.05)),
 		available: (w) => w.dodgeChance < MAX_DODGE, weight: () => 2 },
-	// Passive heal, cumulable: each stack adds +1 HP / 5s (GameWorld.applyRegen banks it).
+	// Passive heal: each stack adds +1 HP / 5s (GameWorld.applyRegen banks it).
 	{ id: 'regen', name: 'Régénération', desc: '+1 PV / 5 s (cumulable)', kind: 'def', scope: 'generic',
 		apply: (w) => (w.regenPerStep += REGEN_PER_STACK), weight: () => 2 },
 	// --- Utility ---
@@ -100,13 +92,11 @@ export const UPGRADES: Upgrade[] = [
 		apply: (w) => (w.luck += 0.15), weight: () => 2 }
 ]
 
-// Draw 3 distinct available upgrades, weighted by rarity so power spikes show up
-// less often (and thin out further as the level climbs). Weighted sampling without
-// replacement.
+// Draw 3 distinct available upgrades, weighted by rarity (power spikes show up less often, and
+// thin out further as the level climbs). Weighted sampling without replacement.
 export const rollChoices = (w: GameWorld): Upgrade[] => {
 	const lvl = get(level)
-	// XP pool = the global character stats above, minus any that have hit their cap (their own
-	// `available` gate). Weighted so power spikes (crit, life steal) show up less often.
+	// XP pool = the global stats above, minus any that hit their cap (their `available` gate).
 	const bag = UPGRADES.filter((u) => !u.available || u.available(w)).map((u) => ({
 		u,
 		wt: Math.max(0.0001, u.weight ? u.weight(lvl) : 3)
@@ -128,14 +118,12 @@ export const rollChoices = (w: GameWorld): Upgrade[] => {
 	return picks
 }
 
-// The weapon-milestone offer: one card per archetype the player DOESN'T already hold, each
-// adding it as the second weapon (Player.addWeapon — the first weapon's upgrades survive).
-// Presented in place of the normal upgrade roll on the milestone level-up (see GameWorld);
-// not part of the XP pool, so it never rolls by chance.
+// Weapon-milestone offer: one card per archetype, each added as the second weapon
+// (Player.addWeapon; the first weapon's upgrades survive). Duplicates ARE offered on purpose —
+// twin weapons upgrade independently, so two of the same gun on divergent paths is valid. Shown in
+// place of the normal roll on the milestone level-up; never part of the XP pool.
 export const weaponChoices = (w: GameWorld): Upgrade[] => {
-	const held = new Set(w.player.weapons.map((wp) => wp.type.kind))
 	return (Object.keys(WEAPON_TYPES) as WeaponKind[])
-		.filter((k) => !held.has(k))
 		.map((k) => ({
 			id: `weapon:${k}`,
 			name: WEAPON_TYPES[k].name,
@@ -146,10 +134,9 @@ export const weaponChoices = (w: GameWorld): Upgrade[] => {
 		}))
 }
 
-// The power-milestone offer: one card per special power the player doesn't already hold, each
-// equipping it as the S-key ability (Player.equipPower). Presented in place of the normal roll
-// on the power milestone (see GameWorld.openPick); never part of the XP pool. In v1 the player
-// holds no power until this card, so it always offers the full set.
+// Power-milestone offer: one card per power the player doesn't hold, each equipping it as the
+// S-key ability (Player.equipPower). Shown in place of the normal roll on the power milestone;
+// never part of the XP pool.
 export const powerChoices = (w: GameWorld): Upgrade[] => {
 	return (Object.keys(POWER_TYPES) as PowerKind[])
 		.filter((k) => w.player.power?.type.kind !== k)
@@ -163,11 +150,10 @@ export const powerChoices = (w: GameWorld): Upgrade[] => {
 		}))
 }
 
-// --- Intermission shop (roadmap chantier 5) --------------------------------------------------
-// The paid, *chosen* half of the economy: unlike the forced XP roll, shop offers are specific
-// to a single held weapon/power INSTANCE (so a dual-wielder tunes each gun separately — the
-// per-weapon purchases chantier 3 deferred). A template below is paired with a concrete Weapon
-// or Power at roll time (buildShopCandidates), captured in the offer's closures.
+// --- Intermission shop ------------------------------------------------------------------------
+// The paid, chosen half of the economy: shop offers target a single held weapon/power INSTANCE (so
+// a dual-wielder tunes each gun separately). A template below is paired with a concrete Weapon or
+// Power at roll time (buildShopCandidates), captured in the offer's closures.
 
 interface WeaponShopTpl {
 	id: string
@@ -178,7 +164,7 @@ interface WeaponShopTpl {
 	available: (wp: Weapon) => boolean
 }
 
-// Per-weapon purchases — the shop twin of the weapon UPGRADES, but each bumps ONE weapon.
+// Per-weapon purchases — each bumps ONE weapon.
 const WEAPON_SHOP: WeaponShopTpl[] = [
 	{ id: 'rapid', name: 'Cadence +18%', desc: 'Tire plus vite', cost: 10,
 		apply: (wp) => (wp.fireSteps = Math.max(MIN_FIRE_STEPS, Math.round(wp.fireSteps * 0.82))),
@@ -220,8 +206,7 @@ const POWER_SHOP: PowerShopTpl[] = [
 		apply: (pw) => (pw.radius += 30), available: (pw) => pw.radius > 0 }
 ]
 
-// A single purchasable offer, already bound to a concrete weapon/power (apply/available close
-// over the instance). `kind` drives the card accent in the shop overlay.
+// A purchasable offer bound to a concrete weapon/power. `kind` drives the card accent.
 export interface ShopOffer {
 	id: string
 	name: string
@@ -232,8 +217,8 @@ export interface ShopOffer {
 	available: () => boolean
 }
 
-// Every offer currently applicable to the player's held weapons + power (capped/maxed ones drop
-// out via each template's `available`). Sampled by rollShopOffers.
+// Every offer applicable to the player's held weapons + power (capped ones drop out via each
+// template's `available`). Sampled by rollShopOffers.
 const buildShopCandidates = (w: GameWorld): ShopOffer[] => {
 	const out: ShopOffer[] = []
 	w.player.weapons.forEach((wp, i) => {
@@ -264,9 +249,8 @@ const buildShopCandidates = (w: GameWorld): ShopOffer[] => {
 	return out
 }
 
-// Draw `count` distinct shop offers (uniform random), skipping any id in `exclude` — used both
-// to stock the shop and to refill a single slot after a purchase (excluding the other visible
-// slots so no duplicate offer is shown at once).
+// Draw `count` distinct shop offers (uniform random), skipping any id in `exclude` — stocks the
+// shop and refills a single slot after a purchase (excluding visible slots to avoid duplicates).
 export const rollShopOffers = (
 	w: GameWorld,
 	count: number,

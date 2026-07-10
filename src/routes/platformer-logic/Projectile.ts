@@ -4,15 +4,15 @@ import type { Platform } from './Platform'
 
 export class Projectile {
 	pos: { x: number; y: number }
-	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
+	prevPos: { x: number; y: number } // pre-step position (render interpolation)
 	angle: number
 	height: number
 	width: number
 	speed: number
 	image!: HTMLImageElement
-	ticksCount = 0 // physics steps alive, for the lifetime cap
-	hostile = false // enemy shot (damages the player) vs player bolt (damages enemies)
-	damage = 1 // HP removed from an enemy on hit (player bolts; raised by Power Shot)
+	ticksCount = 0 // steps alive, for the lifetime cap
+	hostile = false // enemy shot (hurts player) vs player bolt (hurts enemies)
+	damage = 1 // HP removed on hit (player bolts; raised by Power Shot)
 
 	constructor(
 		pos: { x: number; y: number },
@@ -30,7 +30,7 @@ export class Projectile {
 		this.angle = angle
 		this.hostile = opts.hostile ?? false
 		this.damage = opts.damage ?? 1
-		// Enemy shots are drawn as a small orb, so give them a compact square hitbox.
+		// Enemy shots draw as a small orb, so give them a compact square hitbox.
 		if (this.hostile) {
 			this.width = 12
 			this.height = 12
@@ -54,7 +54,7 @@ export class Projectile {
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
 		const { x, y } = lerpPos(this, alpha)
 
-		// Enemy shots: a small glowing orb, visually distinct from the player's bolts.
+		// Enemy shots: a small glowing orb, distinct from the player's bolts.
 		if (this.hostile) {
 			ctx.save()
 			ctx.fillStyle = '#fb923c' // orange-400

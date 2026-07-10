@@ -5,12 +5,10 @@ import { enemiesStore } from '$lib/stores'
 // Anything that aims: the player or a friendly turret. Only its centre matters.
 type AimSource = { pos: { x: number; y: number }; width: number; height: number }
 
-// Line-of-sight / auto-aim geometry. A shot travels in a straight line, so a
-// perched player must not keep dumping bolts into the platform they stand on —
-// these helpers pick a target the player can actually hit.
+// Line-of-sight / auto-aim geometry: pick a target the shooter can actually hit,
+// so a perched player doesn't dump bolts into their own platform.
 
-// Does the segment (x1,y1)->(x2,y2) cross this platform rect? Liang-Barsky line
-// clip — used to tell whether a shot at an enemy would slam into a platform first.
+// Does segment (x1,y1)->(x2,y2) cross this platform rect? Liang-Barsky line clip.
 const segmentIntersectsRect = (
 	x1: number,
 	y1: number,
@@ -26,7 +24,7 @@ const segmentIntersectsRect = (
 	let t1 = 1
 	for (let i = 0; i < 4; i++) {
 		if (p[i] === 0) {
-			if (q[i] < 0) return false // parallel to this edge and fully outside it
+			if (q[i] < 0) return false // parallel to this edge, fully outside it
 		} else {
 			const t = q[i] / p[i]
 			if (p[i] < 0) {
@@ -38,7 +36,7 @@ const segmentIntersectsRect = (
 			}
 		}
 	}
-	return t0 < t1 // overlapping interval (strict: a mere graze doesn't block)
+	return t0 < t1 // overlapping interval (strict: a graze doesn't block)
 }
 
 // True if any platform sits between the two points — the shot would be walled off.
@@ -53,10 +51,8 @@ const firingBlocked = (
 	return false
 }
 
-// Nearest enemy with a clear line of fire (no platform in the way), within `maxDist`
-// (default unlimited). Used by the player's auto-aim and by friendly turrets. A perched
-// player thus stops dumping shots into the platform they stand on and engages reachable
-// threats (e.g. flyers overhead) instead. null if none can be hit.
+// Nearest enemy with a clear line of fire within `maxDist` (default unlimited). Used by
+// player auto-aim and friendly turrets. null if none can be hit.
 export const nearestEnemy = (
 	source: AimSource,
 	platforms: Platform[],
@@ -64,7 +60,7 @@ export const nearestEnemy = (
 ): Enemy | null => {
 	const foes = enemiesStore.list
 	let best: Enemy | null = null
-	let bestD = maxDist * maxDist // squared, so anything past the range is skipped outright
+	let bestD = maxDist * maxDist // squared, to compare without sqrt
 	const px = source.pos.x + source.width / 2
 	const py = source.pos.y + source.height / 2
 	for (const e of foes) {
@@ -73,7 +69,7 @@ export const nearestEnemy = (
 		const dx = ex - px
 		const dy = ey - py
 		const d = dx * dx + dy * dy
-		if (d >= bestD) continue // farther than the current pick — skip the LoS test
+		if (d >= bestD) continue // farther than current pick — skip the LoS test
 		if (firingBlocked(platforms, px, py, ex, ey)) continue
 		bestD = d
 		best = e

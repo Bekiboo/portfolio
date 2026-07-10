@@ -1,25 +1,18 @@
 import { ENEMY_TYPES, type EnemyKind } from './enemyTypes'
 
-// The difficulty curve — pure policy, "what does wave N look like". Difficulty here is
-// AUTHORED, not a smooth ramp: each wave is a themed encounter (a composition of enemy
-// kinds, a concurrent cap, a spawn cadence and an advance-speed multiplier). The spawn
-// director in GameWorld reads the current wave's WaveDef to top the field up; nothing
-// here holds state. Toughness (HP/damage) still ramps smoothly with the wave number on
-// top of the theme (waveEnemyHealth / waveContactDamage below).
-//
-// Design intent: gentle, legible openings (a few slow bikers) that introduce ONE new
-// threat vector at a time — flyers, then a brute, then gunfire, then chargers, turrets,
-// bombers — instead of piling every kind on at once. Ranged pressure arrives late.
-// How long each wave's combat phase lasts before the rest/intermission kicks in. Waves
-// grow from 30s (wave 1) by +10s each, capped at 60s (wave 4+), so later themed encounters
-// have more room. After this timer the field clears and the player walks back to spawn to
-// trigger the next wave (GameWorld intermission).
+// The difficulty curve — pure policy, stateless. Each wave is an AUTHORED themed
+// encounter (enemy kinds + concurrent cap + spawn cadence + advance-speed mul); the
+// GameWorld spawn director reads the current WaveDef to top the field up. Toughness
+// (HP/damage) ramps smoothly on top (waveEnemyHealth / waveContactDamage below).
+// Intent: introduce ONE new threat vector at a time; ranged pressure arrives late.
+
+// Combat-phase length before the intermission: 30s (wave 1) +10s/wave, capped 60s.
+// After it the field clears and the player walks back to spawn (GameWorld intermission).
 export const waveDuration = (w: number) => Math.min(60000, 30000 + (w - 1) * 10000)
 
-// Reference advance speed at speedMul 1.0. A wave's `speedMul` scales it, and each chase
-// kind scales again by its own `waveSpeedMul` (flyer 0.8, charger 1.05…). Stays well under
-// the player's speed (5) so enemies are always outrunnable — pressure is volume, not
-// footspeed.
+// Reference advance speed at speedMul 1.0; a wave's `speedMul` and each chase kind's own
+// `waveSpeedMul` scale it. Kept under the player's speed (5) so enemies are outrunnable —
+// pressure is volume, not footspeed.
 const BASE_ADVANCE = 2.6
 
 export interface WaveDef {
@@ -32,8 +25,7 @@ export interface WaveDef {
 	eliteAtStart?: EnemyKind // spawn one of these when the wave begins (miniboss beat)
 }
 
-// Authored waves 1..N (compact, one row per wave). Past the table, waveDef() scales a
-// procedural tail. Each new theme adds a single vector so the player reads the change.
+// Authored waves 1..N, one row each; past the table waveDef() scales a procedural tail.
 // prettier-ignore — kept as a legible one-line-per-wave table (over printWidth on purpose).
 const WAVES: WaveDef[] = [
 	// A handful of slow bikers shambling in. Learn to move and shoot.
@@ -58,9 +50,8 @@ const WAVES: WaveDef[] = [
 	{ label: 'Chaos', cap: 17, interval: 750, speedMul: 1.05, ground: ['biker', 'charger'], floors: { flyer: 1, shooter: 1, turret: 1, bomber: 1 }, eliteAtStart: 'brute' }
 ]
 
-// The current wave's definition. Past the authored table the endless tail scales from the
-// last wave: cap and speed creep up to a ceiling, interval down to a floor, ranged pressure
-// holds, and a brute anchors every third wave. Bounded so it stays hard-but-fair.
+// Current wave's def. Past the table the endless tail scales from the last wave (bounded):
+// cap/speed creep to a ceiling, interval to a floor, and a brute anchors every third wave.
 export function waveDef(w: number): WaveDef {
 	if (w <= WAVES.length) return WAVES[w - 1]
 	const over = w - WAVES.length
@@ -75,8 +66,8 @@ export function waveDef(w: number): WaveDef {
 	}
 }
 
-// Thin per-wave accessors the director reads (kept as functions so GameWorld's call sites
-// are unchanged from the old continuous curve).
+// Thin per-wave accessors the director reads (functions, so GameWorld call sites are
+// unchanged from the old continuous curve).
 export const waveSpawnInterval = (w: number) => waveDef(w).interval
 export const waveEnemySpeed = (w: number) => BASE_ADVANCE * waveDef(w).speedMul
 
@@ -84,7 +75,6 @@ export const waveEnemySpeed = (w: number) => BASE_ADVANCE * waveDef(w).speedMul
 export const waveEnemyHealth = (kind: EnemyKind, w: number) =>
 	ENEMY_TYPES[kind].health + Math.floor((w - 1) / 3)
 
-// Contact/shot/blast damage: a gentle ramp — most hits stay 1 until later waves,
-// brutes/bombers start at 2 (their `contactBase`). Keeps it "nervous but survivable".
+// Contact/shot/blast damage: gentle ramp from each kind's `contactBase` (+1 every 5 waves).
 export const waveContactDamage = (kind: EnemyKind, w: number) =>
 	ENEMY_TYPES[kind].contactBase + Math.floor((w - 1) / 5)

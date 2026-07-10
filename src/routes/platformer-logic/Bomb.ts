@@ -3,24 +3,21 @@ import { bombsStore, effectsStore } from '$lib/stores'
 import { Effect } from './Effect'
 import type { Platform } from './Platform'
 
-const MAX_AIRTIME = 240 // safety: a bomb that somehow never lands still detonates (~4s)
-const BLAST_STEPS = 14 // physics steps the explosion ring is drawn before cleanup
+const MAX_AIRTIME = 240 // safety: detonate even if it never lands (~4s)
+const BLAST_STEPS = 14 // steps the explosion ring is drawn before cleanup
 
-// A gravity bomb lobbed by a hovering bomber. It arcs out and falls to the floor
-// (or a platform top), telegraphed by its whole descent, then detonates into an
-// area blast. The AoE hit is a single check the game loop resolves on the first
-// step of the explosion (state === 'exploding' && !damageApplied), so it's fair:
-// the player has the fall time to clear the impact zone.
+// Gravity bomb lobbed by a bomber. Arcs down to the floor/platform top then blasts.
+// AoE resolved by the loop on the first exploding step (fair: player has fall time to clear).
 export class Bomb {
 	pos: { x: number; y: number }
-	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
+	prevPos: { x: number; y: number } // pre-step position (render interpolation)
 	velocity: { x: number; y: number }
 	width = 16
 	height = 16
 	damage: number
 	blastRadius: number
 	state: 'falling' | 'exploding' = 'falling'
-	damageApplied = false // set once the loop has resolved this blast's AoE hit
+	damageApplied = false // set once the loop resolves this blast's AoE hit
 	age = 0
 	blastTimer = 0
 
@@ -31,7 +28,7 @@ export class Bomb {
 	) {
 		this.pos = { x: pos.x, y: pos.y }
 		this.prevPos = { x: pos.x, y: pos.y }
-		this.velocity = { x: vx, y: -1 } // a small upward lob before it arcs down
+		this.velocity = { x: vx, y: -1 } // small upward lob before arcing down
 		this.damage = opts.damage ?? 2
 		this.blastRadius = opts.blastRadius ?? 74
 	}
@@ -63,7 +60,7 @@ export class Bomb {
 						platform
 					)
 				) {
-					// Only detonate when it dropped onto the top edge (not clipping a side).
+					// Only detonate when landing on the top edge (not clipping a side).
 					if (this.prevPos.y + this.height <= platform.top + 10) {
 						this.pos.y = platform.top - this.height
 						this.#detonate()
@@ -112,9 +109,7 @@ export class Bomb {
 		const x = p.x + this.width / 2
 		const y = p.y + this.height / 2
 		ctx.save()
-		// A high-contrast warning read: a pulsing outer ring makes the incoming bomb easy
-		// to track over the busy CV, and a bright warm body (not the old dark-gray casing)
-		// stands out against both light and dark backgrounds.
+		// High-contrast warning: pulsing ring + warm body track easily over the busy CV.
 		const pulse = Math.floor(this.age / 5) % 2 === 0
 		const r = this.width / 2
 		ctx.beginPath() // pulsing warning ring

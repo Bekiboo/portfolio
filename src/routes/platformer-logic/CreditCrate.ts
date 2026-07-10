@@ -1,19 +1,18 @@
 import { GRAVITY, lerpPos, settleOnGround, type Bounds } from './utils'
 import type { Platform } from './Platform'
 
-// A dropped credit crate — the shop currency. Bursts (rarely) from a slain enemy, tumbles to
-// the floor under gravity and rests there until walked over. Unlike XP it isn't magnetised, so
-// banking it is a deliberate detour; and unlike a med-kit it never expires (currency is too
-// precious to lose before the intermission shop). Worth `value` credits on pickup.
+// A dropped credit crate (shop currency). Rarely bursts from a slain enemy, falls, rests
+// until walked over. No magnet (banking it is a deliberate detour) and never expires (too
+// precious to lose before the shop). Worth `value` credits on pickup.
 export class CreditCrate {
 	pos: { x: number; y: number }
-	prevPos: { x: number; y: number } // position before the last physics step (render interpolation)
+	prevPos: { x: number; y: number } // pre-step pos, for render interpolation
 	velocity: { x: number; y: number }
 	width = 20
 	height = 16
 	value: number
 	grounded = false
-	bob = 0 // gentle idle bob once grounded (drives the draw float)
+	bob = 0 // idle bob once grounded (drives the draw float)
 
 	constructor(pos: { x: number; y: number }, opts: { value?: number } = {}) {
 		this.value = opts.value ?? 5

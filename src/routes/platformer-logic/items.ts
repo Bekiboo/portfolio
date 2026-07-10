@@ -6,26 +6,20 @@ import { MAX_SHIELD_MAX, MIN_SHIELD_REGEN, MAX_JUMP, MAX_ARMOR } from './upgrade
 import type { GameWorld } from './GameWorld.svelte'
 import type { Enemy } from './Enemy'
 
-// Trade-off items floor Max HP so a "−PV" relic can never zero the player out, and clamp armor to
-// the same band the XP stat uses (positive side) with a small negative floor (so a "+dégâts subis"
-// relic bites without becoming absurd).
+// HP_FLOOR: a "−PV" relic can never zero the player out. MIN_ARMOR: negative floor so a
+// "+dégâts subis" relic bites without becoming absurd.
 const HP_FLOOR = 3
 const MIN_ARMOR = -0.5
 
-// --- Passive items (roadmap: misc bonuses) ---------------------------------------------------
-// The third acquisition channel, alongside the XP stat pool and the per-weapon/power shop: run-
-// scoped RELICS bought from the shop's second board. The whole point is that ADDING CONTENT IS
-// DATA, not an engine edit — an item is a registry entry that subscribes to a handful of combat/
-// lifecycle HOOKS, which GameWorld fans out to at fixed seams (onKill/onHit/onDamaged/onWaveStart
-// each frame-step onTick, and onDraw once per frame). Items may hold per-instance mutable `state`
-// (a drone's position + fire timer, a stacking counter…) and can stack up to `maxStacks`.
-//
-// Items reach the world through GameWorld's public surface (player, shieldMax/shieldCharges/
-// shieldRegenSteps, shockwave()) and the global entity stores imported here, so nothing here
-// pokes at engine internals.
+// --- Passive items (run-scoped RELICS) -------------------------------------------------------
+// Third acquisition channel (alongside XP stats and the weapon/power shop). Adding content is
+// DATA: an item is a registry entry subscribing to combat/lifecycle HOOKS that GameWorld fans out
+// to at fixed seams. Items may hold per-instance mutable `state` and stack up to `maxStacks`.
+// Reach the world only through GameWorld's public surface + the global entity stores — no engine
+// internals.
 
-// Per-instance scratch state (drone positions, fire timers, orbit clock…). All numeric, keyed by
-// string so a stackable item can namespace per-copy slots (x0/y0/cd0, x1/y1/cd1, …).
+// Per-instance scratch state, string-keyed so a stackable item can namespace per-copy slots
+// (x0/y0/cd0, x1/y1/cd1, …).
 export class ItemInstance {
 	readonly type: ItemType
 	stacks = 1
@@ -35,9 +29,8 @@ export class ItemInstance {
 	}
 }
 
-// The hook surface. Every field is optional — an item wires only the seams it needs. `item` is the
-// live ItemInstance (read `item.stacks`, read/write `item.state`). All are called only while a run
-// is playing (onDraw once per rendered frame; the rest per fixed physics step / event).
+// The hook surface — every field optional; an item wires only the seams it needs. Called only
+// while a run is playing (onDraw once per rendered frame; the rest per fixed physics step / event).
 export interface ItemHooks {
 	onAcquire?: (w: GameWorld, item: ItemInstance) => void // gained or stacked: apply per-stack effect
 	onKill?: (w: GameWorld, enemy: Enemy, item: ItemInstance) => void // an enemy died (any source)
@@ -69,7 +62,7 @@ const DRONE_SPEED = 9 // drone bolt travel speed
 const THORNS_RADIUS = 92 // px blast radius when the player is struck
 const THORNS_KNOCKBACK = 30
 // --- Explosive tuning ---
-const BLAST_RADIUS = 62 // px chain-blast radius on a kill (small: only chains through tight, low-HP packs)
+const BLAST_RADIUS = 62 // px chain-blast radius on a kill (small: only chains tight, low-HP packs)
 
 // Nearest live enemy to a point within `maxDist` (drones aim independently of the player's guns).
 const nearestFoe = (x: number, y: number, maxDist: number): Enemy | null => {
@@ -86,10 +79,9 @@ const nearestFoe = (x: number, y: number, maxDist: number): Enemy | null => {
 	return best
 }
 
-// The registry. Each entry is one relic; the shop's item board samples from these.
+// The registry — one entry per relic; the shop's item board samples from these.
 export const ITEM_TYPES: Record<string, ItemType> = {
-	// --- Bouclier renforcé: onAcquire (stat) — the "bonus pour le bouclier" ---
-	// Adds a shield charge (up to the hard cap) and quickens regen. Refills on pickup so the new
+	// Bouclier renforcé: +1 shield charge (to cap) + faster regen. Refills on pickup so the new
 	// charge is immediately useful.
 	bulwark: {
 		id: 'bulwark',
@@ -106,8 +98,7 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 		}
 	},
 
-	// --- Bottes à ressort: onAcquire (stat) — the "bonus pour le jump" ---
-	// Higher jump + a little foot speed, so vertical builds can kite over the field.
+	// Bottes à ressort: higher jump + a little speed, so vertical builds can kite over the field.
 	springboots: {
 		id: 'springboots',
 		name: 'Bottes à ressort',
@@ -122,10 +113,9 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 		}
 	},
 
-	// --- Drone de combat: onTick + onDraw — the fun showcase ("drones qui suivent le joueur") ---
-	// Orbits the player and auto-fires at the nearest enemy on its own cadence, reusing the player's
-	// bolt sprite. Its shots go through the normal projectile pool, so global +Damage / crit / etc.
-	// apply for free. Stacks add more drones, evenly spaced around the orbit.
+	// Drone de combat: orbits the player, auto-fires at the nearest enemy on its own cadence. Shots
+	// go through the normal projectile pool, so global +Damage / crit apply for free. Stacks add
+	// more drones, evenly spaced around the orbit.
 	drone: {
 		id: 'drone',
 		name: 'Drone de combat',
@@ -191,9 +181,8 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 		}
 	},
 
-	// --- Épines: onDamaged — reactive AoE ("des trucs plus funs") ---
-	// Being struck detonates a blast around the player, punishing melee swarms. Damage scales with
-	// stacks. Reuses GameWorld.shockwave so kills bank score/gems/drops like any other.
+	// Épines: being struck detonates a blast around the player (damage scales with stacks),
+	// punishing melee swarms. Reuses GameWorld.shockwave so kills bank score/gems/drops normally.
 	thorns: {
 		id: 'thorns',
 		name: 'Épines',
@@ -215,9 +204,8 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 		}
 	},
 
-	// --- Charge explosive: onKill — chain potential ("des trucs très variés") ---
-	// A slain enemy pops a small blast. Deliberately low-damage so it only chains through tight,
-	// low-HP packs (late-wave bruisers shrug it off) — self-balancing crowd clear.
+	// Charge explosive: a slain enemy pops a small blast. Deliberately low-damage so it only chains
+	// through tight, low-HP packs (bruisers shrug it off) — self-balancing crowd clear.
 	explosive: {
 		id: 'explosive',
 		name: 'Charge explosive',
@@ -288,9 +276,8 @@ export const ITEM_TYPES: Record<string, ItemType> = {
 }
 
 // --- Shop item board -------------------------------------------------------------------------
-// A purchasable item, already bound to a concrete ItemType (apply/available close over it). Mirrors
-// ShopOffer's shape (id/name/desc/cost/apply/available) so the overlay reuses the same card markup;
-// `kind:'item'` drives the accent and `glyph` is shown on the card.
+// A purchasable item bound to a concrete ItemType. Mirrors ShopOffer's shape so the overlay reuses
+// the same card markup; `kind:'item'` drives the accent, `glyph` shows on the card.
 export interface ItemOffer {
 	id: string
 	name: string
@@ -303,9 +290,8 @@ export interface ItemOffer {
 	available: () => boolean
 }
 
-// Draw `count` distinct item offers, skipping any id in `exclude` (used to refill a single slot
-// after a purchase). Maxed-out items drop out; the price ramps with how many stacks are owned so
-// piling copies of one relic costs more each time.
+// Draw `count` distinct item offers, skipping any id in `exclude` (refill a slot after a purchase).
+// Maxed-out items drop out; price ramps with owned stacks so piling copies costs more each time.
 export const rollItemOffers = (
 	w: GameWorld,
 	count: number,

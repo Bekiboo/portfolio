@@ -2,16 +2,14 @@ import { GRAVITY, lerpPos, settleOnGround, type Bounds } from './utils'
 import { healthPacksStore } from '$lib/stores'
 import type { Platform } from './Platform'
 
-const LIFETIME = 800 // physics steps a pack lives (~13s) — a touch longer than a gem
+const LIFETIME = 800 // physics steps a pack lives (~13s)
 const BLINK_STEPS = 180 // blinks over its final ~3s to warn it's about to vanish
 
-// A dropped med-kit. Bursts from a slain enemy (mostly when the player is hurt),
-// tumbles to the floor under gravity, and rests there until walked over. Unlike
-// XP there's no magnet — the player has to path to it, so healing is a deliberate
-// choice of ground rather than a passive trickle. Restores `heal` HP on pickup.
+// A dropped med-kit. Bursts from a slain enemy (mostly when hurt), falls, rests until
+// walked over. No magnet — healing is a deliberate detour. Restores `heal` HP on pickup.
 export class HealthPack {
 	pos: { x: number; y: number }
-	prevPos: { x: number; y: number } // position before the last physics step (for render interpolation)
+	prevPos: { x: number; y: number } // pre-step pos, for render interpolation
 	velocity: { x: number; y: number }
 	width = 18
 	height = 18
@@ -42,7 +40,7 @@ export class HealthPack {
 	}
 
 	draw(ctx: CanvasRenderingContext2D, alpha = 1) {
-		// Blink out over the final stretch so its disappearance isn't a surprise.
+		// Blink out over the final stretch so vanishing isn't a surprise.
 		if (this.age > LIFETIME - BLINK_STEPS && Math.floor(this.age / 8) % 2 === 0) return
 		const { x, y } = lerpPos(this, alpha)
 		const s = this.width

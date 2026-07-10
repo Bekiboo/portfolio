@@ -35,7 +35,8 @@
 	// otherwise keys go to the game. (The mid-run milestone picker is handled in GameWorld.)
 	const PICK_KEYS: Record<string, number> = {
 		Digit1: 0, Numpad1: 0, Digit2: 1, Numpad2: 1,
-		Digit3: 2, Numpad3: 2, Digit4: 3, Numpad4: 3
+		Digit3: 2, Numpad3: 2, Digit4: 3, Numpad4: 3, Digit5: 4, Numpad5: 4,
+		Digit6: 5, Numpad6: 5, Digit7: 6, Numpad7: 6
 	}
 	function onKeyDown(e: KeyboardEvent) {
 		if ($weaponSelectOpen) {
@@ -275,7 +276,7 @@
 				Annuler
 			</button>
 			<div class="mt-2 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
-				Clic ou touches 1 · 2 · 3 · 4
+				Clic ou touches 1 · 2 · 3 · 4 · 5 · 6 · 7
 			</div>
 		</div>
 	</div>

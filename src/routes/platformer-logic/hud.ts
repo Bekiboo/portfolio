@@ -2,9 +2,8 @@ import { get } from 'svelte/store'
 import type { Bounds } from './utils'
 import { playerHp, maxHp, wave, level, score, levelXp, levelXpNeeded, credits } from '$lib/game'
 
-// Canvas HUD + wave banner. Drawn on top of the focus-mode veil so run state stays
-// legible while the page behind it dims. Reads the reactive HUD stores directly —
-// they're global run state, so no plumbing is needed.
+// Canvas HUD + wave banner, drawn over the focus-mode veil so run state stays legible while the
+// page dims. Reads the reactive HUD stores (global run state) directly.
 
 // How long the "WAVE N" flash shows on advance.
 export const WAVE_BANNER_MS = 1400
@@ -18,7 +17,7 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: Bounds) => {
 	const hp = Math.max(0, get(playerHp))
 	const cap = get(maxHp)
 
-	// HP gauge (red): a single bar with 1-HP segment ticks — replaces the hearts.
+	// HP gauge (red): single bar with 1-HP segment ticks.
 	const gW = 200
 	const gH = 13
 	const gx = cx - gW / 2
@@ -51,14 +50,14 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: Bounds) => {
 		gy + gH + 18
 	)
 
-	// Credits readout (amber, shop currency) pinned top-right, clear of the centred stack.
+	// Credits readout (amber shop currency) pinned top-right, clear of the centred stack.
 	ctx.textAlign = 'right'
 	ctx.font = '700 14px ui-monospace, monospace'
 	ctx.fillStyle = '#fbbf24' // amber-400
 	ctx.fillText(`◈ ${get(credits)}`, canvas.width - 16, gy + gH / 2 + 0.5)
 	ctx.textAlign = 'center'
 
-	// XP-to-next-level progress bar (emerald) — fills as gems are banked.
+	// XP-to-next-level bar (emerald), fills as gems are banked.
 	const barW = 160
 	const barH = 5
 	const bx = cx - barW / 2
@@ -71,9 +70,8 @@ export const drawHud = (ctx: CanvasRenderingContext2D, canvas: Bounds) => {
 	ctx.restore()
 }
 
-// Special-power badge: a small glyph tile under the XP bar that dims and fills bottom-up as
-// the power recharges, and brightens its border when ready. `charge` is 0→1 (1 = ready).
-// null when no power is equipped yet, so the badge only appears once one is earned.
+// Special-power badge under the XP bar: fills bottom-up as the power recharges, border brightens
+// when ready. `charge` is 0→1 (1 = ready); null power hides the badge until one is earned.
 export const drawPowerHud = (
 	ctx: CanvasRenderingContext2D,
 	canvas: Bounds,
@@ -110,8 +108,8 @@ export const drawPowerHud = (
 	ctx.restore()
 }
 
-// Brief "WAVE N" flash (with the wave's theme name below) when the difficulty steps up.
-// `waveBanner` is the ms remaining on the current banner (WAVE_BANNER_MS → 0).
+// Brief "WAVE N" flash (theme name below) on difficulty step-up. `waveBanner` is the ms
+// remaining on the banner (WAVE_BANNER_MS → 0).
 export const drawWaveBanner = (
 	ctx: CanvasRenderingContext2D,
 	canvas: Bounds,
@@ -136,10 +134,9 @@ export const drawWaveBanner = (
 	ctx.restore()
 }
 
-// Persistent rest-phase prompt: shown while a wave is cleared and the player must walk
-// back to the spawn pedestal and hold position. `pulse` (0→1) breathes the call to action;
-// `progress` (0→1) is the dwell charge — once it's non-zero we swap the copy to "hold" and
-// draw a charging bar so the 1.5s hold reads clearly.
+// Rest-phase prompt: shown while a wave is cleared and the player must walk back to the pedestal
+// and hold. `pulse` (0→1) breathes the CTA; `progress` (0→1) is the dwell charge — once non-zero,
+// swap copy to "hold" and draw a charging bar.
 export const drawIntermissionPrompt = (
 	ctx: CanvasRenderingContext2D,
 	canvas: Bounds,

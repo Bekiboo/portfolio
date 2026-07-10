@@ -24,19 +24,17 @@ export class Player {
 	frame = 1
 	ticksCount = 0
 	direction = 'right'
-	// Equipped weapons (up to two). Each owns its own aim, cadence and upgradeable stats and
-	// fires at the nearest enemy to its own muzzle — GameWorld drives them each step. Built
-	// from the character's `weapons` list in applyCharacter().
+	// Equipped weapons (up to two). Each owns its aim/cadence/upgradeable stats and fires at the
+	// nearest enemy to its own muzzle; GameWorld drives them. Built from `cfg.weapons`.
 	weapons: Weapon[] = []
 	// Special power (touche S), at most one. Null until granted at a level milestone; GameWorld
-	// ticks its cooldown and dispatches its effect (Power / powerTypes). Reset by applyCharacter.
+	// ticks its cooldown and dispatches its effect. Reset by applyCharacter.
 	power: Power | null = null
-	// Dash motion state (the 'dash' power): while dashSteps > 0 the horizontal velocity is
-	// forced to dashVX and movement keys are ignored, so the burst can't be steered or cancelled.
+	// Dash motion state: while dashSteps > 0, horizontal velocity is forced to dashVX and movement
+	// keys ignored, so the burst can't be steered or cancelled.
 	dashSteps = 0
 	dashVX = 0
-	// True while a 'slam' plunge is in progress — GameWorld watches for the landing to fire the
-	// ground shockwave (resolveSlamLanding).
+	// True during a 'slam' plunge — GameWorld watches for the landing to fire the shockwave.
 	slamming = false
 	jumpStrength = 8 // upward jump velocity (Spring upgrade raises it); reset each run
 	isFalling = false
@@ -52,11 +50,9 @@ export class Player {
 		this.applyCharacter(this.cfg) // load the default (punk) sprite + config
 	}
 
-	// Reconfigure this single Player instance to a chosen class: swap the sprite sheet
-	// and record the config. Base stats aren't set here — GameWorld.resetUpgrades reads
-	// `cfg` to restore them at run start, and the loop dispatches the attack on
-	// `cfg.attackStyle`. Called from the rising edge of every run with the selected
-	// character, so switching class between runs needs no new Player instance.
+	// Reconfigure this Player to a chosen class: swap sprite sheet + record config. Base stats
+	// aren't set here — GameWorld.resetUpgrades reads `cfg` to restore them at run start. Called
+	// each run start, so switching class between runs needs no new Player instance.
 	applyCharacter(cfg: CharacterType) {
 		this.cfg = cfg
 		this.character = cfg.sprite
@@ -66,35 +62,32 @@ export class Player {
 		this.maxFrame = sprite.frames ?? 0
 		this.frame = 1
 		this.equip(cfg.weapons)
-		this.power = null // a chassis has no innate power in v1; it's earned at a level milestone
+		this.power = null // no innate power in v1; earned at a level milestone
 		this.dashSteps = 0
 		this.slamming = false
 	}
 
-	// (Re)build the equipped weapons from a kind list (fresh instances at base stats). One
-	// weapon rides centred; a pair splits left/right. Called on run start.
+	// (Re)build equipped weapons at base stats. One weapon rides centred; a pair splits left/right.
 	equip(kinds: readonly WeaponKind[]) {
 		this.weapons = kinds.map(
 			(k, i) => new Weapon(k, kinds.length < 2 ? 'center' : i === 0 ? 'left' : 'right')
 		)
 	}
 
-	// Add a second weapon mid-run (the level milestone reward) WITHOUT touching the first —
-	// its earned upgrades are preserved. The lone centred weapon shifts left; the newcomer
-	// takes the right. No-op once two are held.
+	// Add a second weapon mid-run WITHOUT touching the first (its earned upgrades are preserved).
+	// The lone centred weapon shifts left; the newcomer takes the right. No-op once two are held.
 	addWeapon(kind: WeaponKind) {
 		if (this.weapons.length >= 2) return
 		if (this.weapons.length === 1) this.weapons[0].side = 'left'
 		this.weapons.push(new Weapon(kind, this.weapons.length === 0 ? 'center' : 'right'))
 	}
 
-	// Grant the special power (the level-milestone reward). Replaces any current one.
+	// Grant the special power. Replaces any current one.
 	equipPower(kind: PowerKind) {
 		this.power = new Power(kind)
 	}
 
-	// Begin a dash: `vx` px/step for `steps` steps, ignoring movement keys meanwhile so the
-	// burst flies straight (GameWorld grants the i-frames). Faces the dash direction.
+	// Begin a dash: `vx` px/step for `steps` steps (GameWorld grants the i-frames). Faces the dash.
 	startDash(vx: number, steps: number) {
 		this.dashVX = vx
 		this.dashSteps = steps
@@ -127,17 +120,17 @@ export class Player {
 		this.#handleKeys(keys)
 	}
 
-	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1) {
-		// Render at the interpolated position between the last two physics steps
-		// so motion stays smooth at the display's refresh rate.
+	// `blinkHidden` hides only the body + gun sprite for one i-frame flash; continuous-weapon FX
+	// (flame embers, laser) still render so a hit doesn't strobe the flamethrower.
+	draw(ctx: CanvasRenderingContext2D, deltaTime: number, alpha = 1, blinkHidden = false) {
+		// Interpolate between the last two physics steps so motion stays smooth at refresh rate.
 		const { x, y } = lerpPos(this, alpha)
-		// Each weapon draws its gun + hand behind the body (so the character sits in front).
-		// Only a ranged class holds guns (the attackStyle seam — kept for when melee classes
-		// return; the Punk is always ranged today).
+		// Guns draw behind the body. attackStyle seam kept for when melee classes return (Punk is
+		// always ranged today).
 		if (this.cfg.attackStyle === 'ranged') {
-			for (const weapon of this.weapons) weapon.draw(ctx, x, y, this)
+			for (const weapon of this.weapons) weapon.draw(ctx, x, y, this, blinkHidden)
 		}
-		this.#drawCharacter(ctx, deltaTime, x, y)
+		if (!blinkHidden) this.#drawCharacter(ctx, deltaTime, x, y)
 	}
 
 	#drawCharacter(ctx: CanvasRenderingContext2D, deltaTime: number, x: number, y: number) {
@@ -186,8 +179,7 @@ export class Player {
 	}
 
 	#playerSprite(animation: string) {
-		// A class missing this animation keeps its current sprite instead of crashing —
-		// the same guard the enemies use for their optional animations.
+		// A class missing this animation keeps its current sprite instead of crashing.
 		if (!hasSprite(this.character, animation)) return
 		const sprite = getSprite(this.character, animation)
 		this.image = sprite.img
@@ -197,8 +189,7 @@ export class Player {
 	}
 
 	#handleKeys(keys: KeyState) {
-		// Mid-dash: force the burst velocity and ignore movement keys so it can't be steered or
-		// cancelled. Ticks the dash down here (once per step, alongside the position update).
+		// Mid-dash: force burst velocity, ignore movement keys, tick the dash down.
 		if (this.dashSteps > 0) {
 			this.dashSteps--
 			this.velocity.x = this.dashVX

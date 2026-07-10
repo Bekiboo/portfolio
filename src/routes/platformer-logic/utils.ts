@@ -3,22 +3,21 @@ import type { Platform } from './Platform'
 
 type Rect = { width: number; height: number; top: number; left: number }
 
-// World gravity: downward velocity added per physics step. Shared by every falling body
-// (Player, Enemy, and the Bomb/XpGem/HealthPack/CreditCrate pickups) so they all fall at the
-// same rate — previously this constant was redeclared identically in each of those files.
+// World gravity: downward velocity per step. Shared by every falling body so they fall alike.
 export const GRAVITY = 0.33
 
-// The playfield bounds an entity is confined to (floor at `height`, right wall at `width`).
-// Structurally satisfied by the canvas, but the arena is now a WORLD larger than the viewport,
-// so entities take these bounds (GameWorld passes its world size) rather than the canvas itself.
-// The camera then scrolls the viewport around this world (see GameWorld render + parallax).
+// Per-step time delta every entity.update() advances by (GameWorld's fixed step / 12). Exported
+// so ballistic code (grenade launch solve) integrates in the same units. Keep in sync with FIXED_STEP.
+export const STEP_DELTA = 1000 / 60 / 12
+
+// Playfield bounds an entity is confined to (floor at `height`, right wall at `width`).
+// This is the WORLD size (larger than the viewport); the camera scrolls over it.
 export interface Bounds {
 	width: number
 	height: number
 }
 
-// Generic AABB overlap test. Works for any two rectangles — platforms, entity
-// hitboxes, projectiles — which is what lets entity↔entity collisions reuse it.
+// Generic AABB overlap test for any two rectangles (also reused for entity↔entity collisions).
 export const collision = (rect1: Rect, rect2: Rect) => {
 	if (rect1.left >= rect2.left + rect2.width) return false
 	if (rect1.left + rect1.width <= rect2.left) return false
@@ -27,16 +26,13 @@ export const collision = (rect1: Rect, rect2: Rect) => {
 	return true
 }
 
-// A body that carries the last two physics-step positions, so its render can be
-// interpolated. Every entity's draw() is passed an `alpha` in [0,1]; lerpPos returns
-// the smoothed top-left. See the fixed-timestep loop in GameWorld.
+// Carries the last two step positions so render can interpolate via `alpha` in [0,1].
 export interface Interpolable {
 	pos: { x: number; y: number }
 	prevPos: { x: number; y: number }
 }
 
-// Render position interpolated between the last two physics steps. Centred sprites
-// (Bomb, XpGem) add width/2, height/2 to the result themselves.
+// Render position interpolated between the last two steps. Centred sprites add width/2, height/2.
 export function lerpPos(e: Interpolable, alpha: number) {
 	return {
 		x: e.prevPos.x + (e.pos.x - e.prevPos.x) * alpha,
@@ -44,8 +40,7 @@ export function lerpPos(e: Interpolable, alpha: number) {
 	}
 }
 
-// A falling pickup that rests on the ground. settleOnGround mutates `grounded`
-// (and clamps pos/velocity) each step.
+// A falling pickup that rests on the ground; settleOnGround mutates `grounded` each step.
 export interface FallingBody extends Interpolable {
 	velocity: { x: number; y: number }
 	width: number
@@ -53,10 +48,8 @@ export interface FallingBody extends Interpolable {
 	grounded: boolean
 }
 
-// Settle a falling pickup onto the canvas floor or the top of any platform it lands on,
-// and bounce it off the side walls. Sets `body.grounded`. Shared by XpGem/HealthPack/
-// CreditCrate, which all rest identically (Bomb detonates on landing instead, so it
-// keeps its own variant).
+// Settle a pickup onto the floor/platform top, bounce off side walls, set `body.grounded`.
+// Shared by XpGem/HealthPack/CreditCrate (Bomb detonates on landing, so it keeps its own variant).
 export function settleOnGround(body: FallingBody, canvas: Bounds, platforms: Platform[]) {
 	body.grounded = false
 	if (body.pos.y + body.height >= canvas.height) {
@@ -72,7 +65,7 @@ export function settleOnGround(body: FallingBody, canvas: Bounds, platforms: Pla
 					platform
 				)
 			) {
-				// Only settle when it dropped onto the top edge (not clipping a side).
+				// Only settle when landing on the top edge (not clipping a side).
 				if (body.prevPos.y + body.height <= platform.top + 8) {
 					body.pos.y = platform.top - body.height
 					body.velocity.y = 0
@@ -91,10 +84,8 @@ export function settleOnGround(body: FallingBody, canvas: Bounds, platforms: Pla
 	}
 }
 
-// True if a character sheet defines this animation. Enemies that switch animations
-// (turret idle/walk/attack, drone idle/attack) call this before #setAnim so a kind
-// missing an animation silently keeps its current one instead of crashing on a
-// getSprite of an undefined entry.
+// True if a sheet defines this animation. Callers check before #setAnim so a kind missing
+// an animation keeps its current one instead of crashing on getSprite of an undefined entry.
 export function hasSprite(category: string, animation: string): boolean {
 	return !!sprites[category]?.[animation]
 }

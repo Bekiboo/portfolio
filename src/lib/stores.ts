@@ -3,6 +3,7 @@ import type { Projectile } from '../routes/platformer-logic/Projectile'
 import type { Enemy } from '../routes/platformer-logic/Enemy'
 import type { XpGem } from '../routes/platformer-logic/XpGem'
 import type { Bomb } from '../routes/platformer-logic/Bomb'
+import type { Grenade } from '../routes/platformer-logic/Grenade'
 import type { HealthPack } from '../routes/platformer-logic/HealthPack'
 import type { CreditCrate } from '../routes/platformer-logic/CreditCrate'
 import type { Portal } from '../routes/platformer-logic/Portal'
@@ -43,6 +44,7 @@ export const projectilesStore = new Pool<Projectile>()
 export const enemiesStore = new Pool<Enemy>()
 export const xpGemsStore = new Pool<XpGem>()
 export const bombsStore = new Pool<Bomb>()
+export const grenadesStore = new Pool<Grenade>() // player Lance-grenade lobs (friendly AoE)
 export const healthPacksStore = new Pool<HealthPack>()
 export const creditCratesStore = new Pool<CreditCrate>()
 export const portalsStore = new Pool<Portal>()

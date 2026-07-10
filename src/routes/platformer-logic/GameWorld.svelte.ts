@@ -12,10 +12,12 @@ import {
 	projectilesStore,
 	xpGemsStore,
 	bombsStore,
+	grenadesStore,
 	healthPacksStore,
 	creditCratesStore,
 	portalsStore
 } from '$lib/stores'
+import { STEP_DELTA } from './utils'
 import { keys } from './controller'
 import {
 	gameStatus,
@@ -53,44 +55,38 @@ import {
 } from './upgrades'
 import { ItemInstance, rollItemOffers, type ItemType, type ItemOffer } from './items'
 
-// Fixed-timestep physics with render interpolation ("Fix Your Timestep"): the
-// simulation advances in constant 60 Hz steps (deterministic and refresh-rate
-// independent) while draw() interpolates between the last two steps, so motion
-// stays smooth at the display's native refresh rate.
-const FIXED_STEP = 1000 / 60 // physics tick length (ms)
-const STEP_DELTA = FIXED_STEP / 12 // delta unit expected by the entities
+// Fixed-timestep physics with render interpolation ("Fix Your Timestep"): sim advances in
+// constant 60 Hz steps (deterministic, refresh-rate independent); draw() interpolates.
+const FIXED_STEP = 1000 / 60 // physics tick length (ms); STEP_DELTA (= /12) lives in utils now
 const MAX_FRAME_TIME = 100 // clamp accumulated time to avoid a spiral after the tab was hidden
-const SPAWN_DWELL_MS = 1500 // how long the player must hold the spawn pedestal to launch the next wave
-const SPAWN_FLASH_MS = 260 // spawn burst when the hold completes and the wave triggers
+const SPAWN_DWELL_MS = 1500 // hold time on the spawn pedestal to launch the next wave
+const SPAWN_FLASH_MS = 260 // spawn burst when the hold completes
 const INTERMISSION_MAGNET_MUL = 10 // pickup-radius boost during the rest so leftover gems get swept in
-const WEAPON_MILESTONE_LEVEL = 3 // reaching this level grants a 2nd weapon (a special pick, not the shop)
-const POWER_MILESTONE_LEVEL = 5 // reaching this level grants a special power on the S key (another special pick)
-const SHOP_SLOTS = 3 // weapon/power offers shown at the intermission shop
-const ITEM_SLOTS = 3 // passive-item offers shown on the shop's second board
+const WEAPON_MILESTONE_LEVEL = 3 // grants a 2nd weapon (special pick, not the shop)
+const POWER_MILESTONE_LEVEL = 5 // grants a special power on the S key (special pick)
+const SHOP_SLOTS = 3 // weapon/power offers at the intermission shop
+const ITEM_SLOTS = 3 // passive-item offers on the shop's second board
 const ELITE_WAVE_INTERVAL = 5 // every Nth wave opens with a scaled-up elite miniboss
-const ENTER_REVEAL_MIN_MS = 550 // reveal dwell before the weapon picker (lets the slide-out + fall play)
+const ENTER_REVEAL_MIN_MS = 550 // reveal dwell before the weapon picker (lets slide-out + fall play)
 const ENTER_REVEAL_MAX_MS = 2200 // hard cap so the picker always opens even if the fall is long
 
 // World & camera: the arena is a WORLD larger than the viewport, scrolled by a loosely-following
-// camera. Its size is FIXED in world pixels so the map is consistent regardless of the viewport —
-// resizing the window shows more/less of it, it doesn't resize the level. A floor multiple keeps the
-// world at least a bit bigger than the viewport on very large monitors (coverage + a little scroll).
+// camera. Size is FIXED in world px so the map is viewport-independent; a floor multiple keeps it
+// bigger than the viewport on huge monitors.
 const WORLD_W = 2400 // fixed world width  (px)
 const WORLD_H = 1200 // fixed world height (px)
 const WORLD_MIN_VIEW_MUL = 1.12 // ...but never smaller than the view × this (huge-monitor safety)
-// Fixed vertical field of view in world units: the arena always shows this many world px tall,
-// whatever the window size OR browser zoom. Only the on-screen scale changes (viewScale), so Cmd +/-
-// just rescales the same view instead of showing a different slice of the map. Width follows aspect.
+// Fixed vertical field of view in world units: arena always shows VIEW_H world px tall regardless of
+// window size or browser zoom — only the on-screen scale (viewScale) changes. Width follows aspect.
 const VIEW_H = 760
-// The camera softly recenters on the player at ALL times (no dead-zone that pins it to an edge), and
-// leads in the travel direction so you can see what's coming rather than running blind into the edge.
+// Camera softly recenters on the player at all times (no dead-zone) and leads the travel direction.
 const CAM_LERP_X = 0.14 // horizontal easing toward the target (higher = snappier reaction)
 const CAM_LERP_Y = 0.1 //  vertical easing (a touch gentler so jumps stay calm)
 const CAM_LOOKAHEAD_X = 0.1 // lead the view this fraction of the viewport in the travel direction
 const CAM_LEAD_EASE = 0.01 // how fast the look-ahead shifts in/out (and back to 0 when idle)
 const CAM_BIAS_Y = 0.08 // downward bias so the ground below the player stays in view
 // Parallax skyline (static/sprites/Background/{1..5}.png). Back→front: 1 = sky, 5 = nearest. `fx`/`fy`
-// are how much each layer tracks the camera (0 = fixed, 1 = locked to the world); nearer moves more.
+// = how much each layer tracks the camera (0 = fixed, 1 = locked to the world); nearer moves more.
 const BG_LAYERS = [
 	{ file: '1', fx: 0.05, fy: 0.03 },
 	{ file: '2', fx: 0.18, fy: 0.08 },
@@ -101,21 +97,19 @@ const BG_LAYERS = [
 const BG_IMG_W = 576 // native size of every parallax layer (used to scale + tile them)
 const BG_IMG_H = 324
 
-// The mini-game simulation: owns the canvas, the player, the fixed-timestep loop,
-// the spawn director, combat resolution and the run-scoped upgrade state. The Svelte
-// component is a thin shell that mounts this and renders the modals from the reactive
-// fields below (levelUpOpen / choices / rerolls). Difficulty policy lives in waves.ts,
-// the upgrade table in upgrades.ts, HUD drawing in hud.ts and auto-aim in los.ts.
+// The mini-game simulation: owns the canvas, player, fixed-timestep loop, spawn director, combat
+// resolution and run-scoped upgrade state. The Svelte component is a thin shell that mounts this and
+// renders the modals from the reactive fields below. Policy lives elsewhere: waves.ts (difficulty),
+// upgrades.ts (upgrade table), hud.ts (HUD), los.ts (auto-aim).
 export class GameWorld {
 	// --- Rendering context (set on mount) ---
 	private canvas!: HTMLCanvasElement
 	ctx!: CanvasRenderingContext2D
 	player!: Player
-	// Two subsystems split out of this god-object, each holding a back-reference to it: the spawn
-	// director (what/where to spawn, portal driving) and the combat resolver (hits, kills + drops,
-	// shield, damage-number/shock-ring FX). Both read this world's shared run state via `this`; the
-	// upgrade stats they consume still live here (mutated by upgrades.ts). See SpawnDirector /
-	// CombatResolver. GameWorld still drives the player's weapons + powers itself.
+	// Two subsystems split out of this god-object, each with a back-reference: the spawn director
+	// (what/where to spawn, portals) and the combat resolver (hits, kills + drops, shield, FX). Both
+	// read shared run state via `this` (upgrade stats live here, mutated by upgrades.ts). GameWorld
+	// still drives the player's weapons + powers itself.
 	private director = new SpawnDirector(this)
 	private combat = new CombatResolver(this)
 
@@ -124,33 +118,29 @@ export class GameWorld {
 	private accumulator = 0
 	private rafId: number | null = null
 
-	// Platforms are derived from DOM elements; they only move on scroll/resize, so
-	// cache them and recompute lazily instead of every frame (avoids layout thrash).
-	// collectPlatforms() merges these DOM platforms with the procedural arena ledges below.
+	// Platforms are derived from DOM elements (move only on scroll/resize), so cache and recompute
+	// lazily instead of every frame. collectPlatforms() merges these with the procedural ledges below.
 	private platforms: Platform[] = []
 	private platformsDirty = true
 	private canvasDirty = true
-	// Procedural arena ledges: a fresh random layout is generated each wave (a new set at
-	// run start and at every intermission), giving the player extra terrain that changes
-	// every wave. Merged into `platforms` by collectPlatforms(); rendered (visible=true).
+	// Procedural arena ledges: a fresh random layout each wave (run start + every intermission).
+	// Merged into `platforms` by collectPlatforms(); rendered (visible=true).
 	proceduralPlatforms: Platform[] = []
-	// The next wave's ledges, pre-built at intermission and faded in (render-only, not yet
-	// collidable) as the old set fades out over the spawn dwell; promoted on hold-complete.
+	// Next wave's ledges, pre-built at intermission and faded in (render-only, not yet collidable)
+	// as the old set fades out; promoted on hold-complete.
 	private pendingPlatforms: Platform[] = []
 
-	// Run tunables, bumped by the level-up upgrades (upgrades.ts mutates these) and
-	// restored to their baseline by resetUpgrades() on a fresh run. Weapon-side tunables
-	// (cadence, range, bolt count…) moved onto the per-weapon Weapon instances.
+	// Run tunables, bumped by level-up upgrades (upgrades.ts) and restored by resetUpgrades() on a
+	// fresh run. Weapon-side tunables (cadence, range, bolt count…) live on per-weapon instances.
 	invulnSteps = BASE_INVULN
 	magnetRadius = BASE_MAGNET
 	xpMul = 1 // XP banked per gem
 	regenPerStep = 0 // HP healed per physics step (Regen upgrade adds 1 HP / 5s per stack)
 	private regenAccum = 0 // fractional-HP carry so sub-1-HP-per-step regen still heals
 
-	// --- Brotato-style global character stats (the XP-pool rewards) -----------
-	// Generic, character-wide (not per-weapon — the shop tunes individual weapons). Reset to
-	// baseline by resetUpgrades() and bumped by the level-up stat picks (upgrades.ts). Read by
-	// the combat resolution below. Max HP / Speed / Regen live in their own stores/fields above.
+	// --- Brotato-style global character stats (XP-pool rewards) -----------
+	// Character-wide (not per-weapon). Reset by resetUpgrades(), bumped by level-up picks (upgrades.ts),
+	// read by combat resolution. Max HP / Speed / Regen live in their own stores/fields above.
 	bonusDamage = 0 // flat damage added to every bolt hit
 	critChance = 0 // 0..1 chance a bolt deals CRIT_MULT× damage
 	dodgeChance = 0 // 0..1 chance to shrug off an incoming hit entirely
@@ -159,9 +149,8 @@ export class GameWorld {
 	rangeBonus = 0 // px added to every weapon's engagement range
 	fireRateMul = 1 // global cadence multiplier applied on top of each weapon's fireSteps (<1 = faster)
 	luck = 0 // drop-rate bonus: crate/med-kit chances scale by (1 + luck)
-	// Base shield: a bubble that soaks incoming hits. Each hit spends a charge (no HP
-	// lost) and breaks the bubble briefly; a charge regenerates every shieldRegenSteps,
-	// and any incoming damage resets that timer (no regen while under fire).
+	// Base shield: a bubble soaking incoming hits. Each hit spends a charge (no HP lost); a charge
+	// regens every shieldRegenSteps, and incoming damage resets that timer (no regen under fire).
 	shieldMax = BASE_SHIELD_MAX // charges when full (Bulwark raises it)
 	shieldCharges = BASE_SHIELD_MAX // current charges (each absorbs one hit)
 	shieldRegenSteps = BASE_SHIELD_REGEN // steps to regen one charge (Recharge lowers it)
@@ -170,54 +159,47 @@ export class GameWorld {
 	shieldFlashBig = false // was the last flash a full break (bigger ring)?
 
 	// --- Level-up pick state (read by the Svelte template, hence reactive) ---
-	// gameStatus stays 'playing' during the pick (so the field isn't cleared); these
-	// freeze the sim and drive the pick modal until a choice is made.
+	// gameStatus stays 'playing' during the pick; these freeze the sim and drive the modal.
 	levelUpOpen = $state(false)
 	choices = $state<Upgrade[]>([])
 	rerolls = $state(0)
-	// Which special milestone card the current pick is, if any ('weapon' = choose a 2nd weapon,
-	// 'power' = choose a special power) rather than a normal upgrade — the UI swaps its heading
-	// and hides the reroll for these. null = ordinary level-up roll.
+	// Special milestone card for the current pick ('weapon' = 2nd weapon, 'power' = special power);
+	// the UI swaps its heading and hides the reroll. null = ordinary level-up roll.
 	milestone = $state<'weapon' | 'power' | null>(null)
 	private pendingLevelUps = 0
 	private weaponMilestoneDone = false // the 2nd-weapon card only ever appears once per run
 	private powerMilestoneDone = false // the power card only ever appears once per run
 
 	// --- Intermission shop (read by the Svelte template, hence reactive) ---
-	// Opens when the player reaches the pedestal during the rest; freezes the sim (added to the
-	// pause condition) and offers SHOP_SLOTS paid weapon/power upgrades. Its launch button starts
-	// the next wave. `credits` lives in game.ts (a HUD store); these just drive the overlay.
+	// Opens when the player reaches the pedestal during the rest; freezes the sim and offers
+	// SHOP_SLOTS paid weapon/power upgrades. `credits` lives in game.ts; these just drive the overlay.
 	shopOpen = $state(false)
 	shopOffers = $state<ShopOffer[]>([])
 
 	// --- Passive items (roadmap: misc bonuses) -------------------------------
-	// The third acquisition channel: run-scoped relics bought from the shop's SECOND board. Each
-	// subscribes to combat/lifecycle hooks (onKill/onHit/onDamaged/onWaveStart/onTick/onDraw) that
-	// this class fans out at fixed seams, so adding an item is a data entry in items.ts — never an
-	// engine edit. `itemOffers` drives the board (reactive); `items` is the held collection.
+	// Third acquisition channel: run-scoped relics from the shop's SECOND board. Each subscribes to
+	// combat/lifecycle hooks (onKill/onHit/onDamaged/onWaveStart/onTick/onDraw) fanned out at fixed
+	// seams, so a new item is a data entry in items.ts, never an engine edit.
 	items: ItemInstance[] = []
 	itemOffers = $state<ItemOffer[]>([])
 
-	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime and
-	// drawn over the sprites. Kept off the entity pools since they never interact.
+	// Expanding blast rings (nova / slam shockwaves) — purely visual, aged by frameTime, drawn over
+	// sprites. Off the entity pools since they never interact.
 	shockRings: { x: number; y: number; max: number; t: number; color: string }[] = []
 
-	// Floating damage numbers: a tiny text rises + fades over each damaged enemy. Crits show bigger
-	// and amber. Purely visual (like shockRings), aged by frameTime and capped so a big chain can't
-	// grow the array without bound.
+	// Floating damage numbers rising + fading over damaged enemies (crits bigger/amber). Purely
+	// visual, aged by frameTime, capped so a big chain can't grow the array unbounded.
 	damageNumbers: { x: number; y: number; vy: number; t: number; text: string; color: string; size: number }[] = []
 
 	// --- Wave / run timing ---
 	private spawnTimer = 0
 	invuln = 0 // i-frame countdown; shared by CombatResolver (grants/reads) and the loop (ticks it)
 	private wasPlaying = false
-	// The playfield is a WORLD larger than the viewport (recomputed on resize); entities are confined
-	// to this rather than the canvas. The camera scrolls the viewport around it, behind a parallax
-	// skyline. cameraX/Y are the viewport's top-left in world space (0,0 = portfolio mode).
+	// Playfield is a WORLD larger than the viewport (recomputed on resize); entities confined to it,
+	// not the canvas. cameraX/Y are the viewport's top-left in world space (0,0 = portfolio mode).
 	world = { width: 0, height: 0 }
-	// The on-screen view: viewScale is device px per world unit (so Cmd +/- only rescales); viewW/viewH
-	// are the world units visible (viewH fixed = VIEW_H, viewW follows aspect). Used for the camera,
-	// parallax and HUD (all view-space), while entities live in the full `world`.
+	// On-screen view: viewScale = device px per world unit (Cmd +/- only rescales); viewW/viewH are
+	// world units visible (viewH fixed = VIEW_H, viewW follows aspect). Camera/parallax/HUD are view-space.
 	private viewScale = 1
 	private viewW = 0
 	private viewH = VIEW_H
@@ -226,9 +208,9 @@ export class GameWorld {
 	private camLeadX = 0 // eased look-ahead offset (leads the view in the travel direction)
 	private wasInArena = false
 	private bgImages: HTMLImageElement[] = [] // parallax layers, lazy-loaded in mount()
-	// Entry reveal ('entering'): the character falls into the arena from wherever it stood before the
-	// weapon picker opens. wasEntering detects the rising edge; enterTimer counts the reveal; the pick
-	// opens once landed; enteredFromReveal tells the run's rising edge to keep the fallen pose.
+	// Entry reveal ('entering'): the character falls into the arena before the weapon picker opens.
+	// wasEntering detects the rising edge; enterTimer counts the reveal; the pick opens once landed;
+	// enteredFromReveal tells the run's rising edge to keep the fallen pose.
 	private wasEntering = false
 	private enterTimer = 0
 	private enterPickShown = false
@@ -237,8 +219,8 @@ export class GameWorld {
 	private waveTimer = 0 // ms elapsed in the current wave's combat phase
 	private waveBanner = 0 // ms remaining on the current banner
 	private waveBannerLabel = '' // theme name shown on the current banner
-	// Rest phase between waves: the field is cleared and the player must walk back to the
-	// spawn pedestal and hold to trigger the next wave. No combat/spawns while this is true.
+	// Rest phase between waves: field cleared, player walks back to the spawn pedestal to trigger the
+	// next wave. No combat/spawns while true.
 	private intermission = false
 	private promptTick = 0 // drives the pulsing "return to spawn" prompt
 	private spawnDwell = 0 // ms held on the spawn pedestal this intermission (0 → SPAWN_DWELL_MS)
@@ -249,7 +231,7 @@ export class GameWorld {
 		this.canvas = canvas
 		this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D
 		this.player = new Player({ x: 0, y: 0 })
-		// Preload the parallax skyline layers (drawn behind the arena once a run starts).
+		// Preload the parallax skyline layers.
 		this.bgImages = BG_LAYERS.map((l) => {
 			const img = new Image()
 			img.src = `/sprites/Background/${l.file}.png`
@@ -260,22 +242,19 @@ export class GameWorld {
 	}
 
 	destroy() {
-		// Stop the loop so remounting (e.g. crossing the 1024px breakpoint) doesn't
-		// stack multiple animation loops.
+		// Stop the loop so remounting (e.g. crossing the 1024px breakpoint) doesn't stack loops.
 		if (this.rafId !== null) cancelAnimationFrame(this.rafId)
 		this.clearAllPools()
 	}
 
-	// Empty every entity pool (enemies, projectiles, the three pickups, portals) in one call.
-	// Guarded per-store so it's cheap to call every idle frame — a store only fires its reactive
-	// update when it actually had contents. Used on destroy, on the rising edge of a reveal/run,
-	// and while idle to keep the home screen clear. (The intermission swap in enterIntermission
-	// clears only a subset, so it keeps its own inline block.)
+	// Empty every entity pool in one call. Guarded per-store so it's cheap to call every idle frame
+	// (a store only fires its reactive update when it had contents).
 	private clearAllPools() {
 		if (enemiesStore.list.length) enemiesStore.clear()
 		if (projectilesStore.list.length) projectilesStore.clear()
 		if (xpGemsStore.list.length) xpGemsStore.clear()
 		if (bombsStore.list.length) bombsStore.clear()
+		if (grenadesStore.list.length) grenadesStore.clear()
 		if (healthPacksStore.list.length) healthPacksStore.clear()
 		if (creditCratesStore.list.length) creditCratesStore.clear()
 		if (portalsStore.list.length) portalsStore.clear()
@@ -283,8 +262,8 @@ export class GameWorld {
 
 	// --- Input ----------------------------------------------------------------
 	handleKeyDown(e: KeyboardEvent) {
-		// During a level-up pause, 1/2/3 pick an upgrade, R rerolls, Escape quits;
-		// swallow the rest so movement keys don't leak into the frozen sim.
+		// Level-up pause: 1/2/3 pick, R rerolls, Escape quits; swallow the rest so movement
+		// keys don't leak into the frozen sim.
 		if (this.levelUpOpen) {
 			if (e.code === 'Escape') stopRun()
 			else if (e.code === 'Digit1' || e.code === 'Numpad1') this.chooseUpgrade(this.choices[0])
@@ -293,8 +272,7 @@ export class GameWorld {
 			else if (e.code === 'KeyR') this.reroll()
 			return
 		}
-		// Intermission shop open: 1/2/3 buy an offer, Enter/Escape launch the next wave; the rest
-		// is swallowed so movement doesn't leak into the frozen sim.
+		// Shop open: 1/2/3 buy an offer, Enter/Escape launch the next wave; swallow the rest.
 		if (this.shopOpen) {
 			if (e.code === 'Enter' || e.code === 'Escape') this.launchFromShop()
 			else if (e.code === 'Digit1' || e.code === 'Numpad1') this.buyOffer(this.shopOffers[0])
@@ -306,14 +284,12 @@ export class GameWorld {
 			else if (e.code === 'Digit6' || e.code === 'Numpad6') this.buyItem(this.itemOffers[2])
 			return
 		}
-		// Pause menu open: Escape resumes; movement keys are swallowed so they don't leak
-		// into the frozen sim (the Continue/Quit buttons handle the rest).
+		// Pause menu open: Escape resumes; swallow movement keys (Continue/Quit buttons handle the rest).
 		if (get(pausedStore)) {
 			if (e.code === 'Escape') resumeGame()
 			return
 		}
-		// Escape pauses an active run (Continue/Quit modal) and dismisses game-over;
-		// everything else is movement.
+		// Escape pauses an active run and dismisses game-over; everything else is movement.
 		if (e.code === 'Escape') {
 			const st = get(gameStatus)
 			if (st === 'playing') pauseGame()
@@ -336,13 +312,12 @@ export class GameWorld {
 	private resizeCanvas() {
 		this.canvas.width = this.canvas.clientWidth
 		this.canvas.height = this.canvas.clientHeight
-		// Fixed vertical field of view: viewScale maps world units → device px, so a smaller/larger (or
-		// zoomed) window just rescales the SAME view. Width follows the aspect ratio (not the zoom).
+		// Fixed vertical FOV: viewScale maps world units → device px, so resize/zoom just rescales the
+		// same view. Width follows the aspect ratio.
 		this.viewScale = (this.canvas.height || 1) / VIEW_H
 		this.viewH = VIEW_H
 		this.viewW = this.canvas.width / this.viewScale
-		// Fixed world size (so the map doesn't change with the window), floored to stay bigger than the
-		// view on very wide screens.
+		// Fixed world size, floored to stay bigger than the view on very wide screens.
 		this.world.width = Math.max(WORLD_W, this.viewW * WORLD_MIN_VIEW_MUL)
 		this.world.height = Math.max(WORLD_H, this.viewH * WORLD_MIN_VIEW_MUL)
 		this.canvasDirty = false
@@ -350,9 +325,8 @@ export class GameWorld {
 
 	private collectPlatforms() {
 		this.platforms = []
-		// Portfolio mode (idle) only: the CV's interactive elements are climbable platforms. Once a
-		// run starts the portfolio is hidden and the arena is PURELY procedural — so we skip the DOM
-		// platforms entirely (they'd also read as zero-rects while hidden anyway).
+		// Portfolio mode (idle) only: the CV's interactive elements are climbable platforms. Once a run
+		// starts the arena is purely procedural, so skip the DOM platforms (also zero-rects while hidden).
 		if (get(gameStatus) === 'idle') {
 			const collidingElements = document.querySelectorAll('[data-colliding]')
 			for (let i = 0; i < collidingElements.length; i++) {
@@ -364,20 +338,17 @@ export class GameWorld {
 		this.platformsDirty = false
 	}
 
-	// Roll a fresh set of arena ledges for the next wave — a new layout every wave, but with
-	// deliberate structure rather than scattered noise: two wall-flush perch ledges (enemy
-	// spawn points, e.g. a perched turret firing inward) plus interior ledges laid out on a
-	// regular column grid so spacing reads as designed. All marked visible so Platform.draw()
-	// renders them. Returns the set; the caller decides if it's the live or pending layout.
+	// Roll a fresh set of arena ledges: two wall-flush perch ledges (enemy spawn points, e.g. a
+	// perched turret) plus interior ledges on a regular column grid so spacing reads as designed.
+	// All visible. Caller decides if it's the live or pending layout.
 	private buildLayout(): Platform[] {
 		const W = this.world.width
 		const H = this.world.height
 		const thick = 20
 		const ledges: Platform[] = []
 
-		// Wall-flush perches: one on each side, at a jittered mid height. Flush to the edge
-		// so an enemy can ride in on the wall and hold it (the spawn director perches turrets
-		// here).
+		// Wall-flush perches: one per side at a jittered mid height, flush to the edge so an enemy
+		// can ride in on the wall and hold it (spawn director perches turrets here).
 		const perchW = Math.min(140, W * 0.14)
 		const perchY = () => H * (0.4 + Math.random() * 0.26)
 		const left = new Platform(perchW, thick, perchY(), 0)
@@ -388,9 +359,8 @@ export class GameWorld {
 		right.edge = 'right'
 		ledges.push(left, right)
 
-		// Interior ledges on a regular column grid: one per column, each centred in its
-		// column with a little horizontal jitter and a varied height, so the field is evenly
-		// spaced without looking mechanical.
+		// Interior ledges on a column grid: one per column, jittered horizontally + varied height so
+		// the field is evenly spaced without looking mechanical.
 		const cols = 3 + Math.floor(Math.random() * 2) // 3–4 interior ledges
 		const usableL = W * 0.18
 		const usableR = W * 0.82
@@ -409,10 +379,9 @@ export class GameWorld {
 		return ledges
 	}
 
-	// Combat timer expired: enter the rest phase. Clear the threat (enemies + their bombs
-	// and bolts) for a true breather — but keep gems/health packs so the player can mop up
-	// on the walk back. Pre-build the next arena; it stays render-only at alpha 0 until the
-	// player holds the pedestal, then fades in as the old set fades out.
+	// Combat timer expired: enter the rest phase. Clear the threat (enemies + bombs + bolts) but keep
+	// gems/health packs so the player can mop up on the walk back. Pre-build the next arena (render-only
+	// at alpha 0 until promoted).
 	private enterIntermission() {
 		this.intermission = true
 		this.spawnDwell = 0
@@ -421,13 +390,14 @@ export class GameWorld {
 		enemiesStore.clear()
 		projectilesStore.clear()
 		bombsStore.clear()
+		grenadesStore.clear() // in-flight player lobs vanish with the cleared field
 		portalsStore.clear() // any mid-telegraph rifts vanish with the cleared field
 		this.pendingPlatforms = this.buildLayout()
 		for (const p of this.pendingPlatforms) p.renderAlpha = 0
 	}
 
-	// The hold completed: promote the pre-built arena to the live (collidable) layout, fire
-	// the spawn burst, and start the next wave.
+	// Hold completed: promote the pre-built arena to the live (collidable) layout, fire the burst,
+	// and start the next wave.
 	private startNextWave() {
 		this.intermission = false
 		this.shopOpen = false
@@ -443,16 +413,15 @@ export class GameWorld {
 		const def = waveDef(get(wave))
 		this.waveBanner = WAVE_BANNER_MS
 		this.waveBannerLabel = def.label
-		// Every Nth wave opens with a true ELITE (scaled-up miniboss, dropped centre-stage). On a
-		// non-milestone wave a themed `eliteAtStart` still trickles a normal miniboss in via a rift.
+		// Every Nth wave opens with a true ELITE (scaled-up miniboss, centre-stage); otherwise a themed
+		// `eliteAtStart` trickles a normal miniboss in via a rift.
 		if (get(wave) % ELITE_WAVE_INTERVAL === 0) this.director.spawnElite(def.eliteAtStart ?? 'brute')
 		else if (def.eliteAtStart) this.director.openPortalsForBatch([def.eliteAtStart])
 		this.itemsOnWaveStart() // items may prime themselves at the top of a wave
 	}
 
-	// Advance the rest phase: once the player walks back onto the pedestal, open the shop (which
-	// freezes the sim). Buying and launching the next wave happen from the shop overlay — the old
-	// hold-to-continue is replaced by the shop as the pedestal's purpose.
+	// Advance the rest phase: once the player walks back onto the pedestal, open the shop (freezes the
+	// sim). Buying + launching the next wave happen from the shop overlay.
 	private updateIntermission() {
 		this.promptTick++
 		if (!this.shopOpen && this.atSpawn()) this.openShop()
@@ -466,9 +435,8 @@ export class GameWorld {
 		this.shopOpen = true
 	}
 
-	// Buy an offer: pay its cost, apply it to the bound weapon/power, then refill just that slot
-	// with a fresh offer (excluding the other visible slots so no duplicate shows). No-op if the
-	// player can't afford it or the offer capped out between roll and click.
+	// Buy an offer: pay, apply to the bound weapon/power, then refill that slot with a fresh offer
+	// (excluding the other visible slots). No-op if unaffordable or the offer capped out.
 	buyOffer(offer: ShopOffer | undefined) {
 		if (!this.shopOpen || !offer) return
 		if (get(credits) < offer.cost || !offer.available()) return
@@ -481,8 +449,8 @@ export class GameWorld {
 			.filter((o): o is ShopOffer => !!o)
 	}
 
-	// Buy a passive item from the shop's second board: pay, grant/stack it, then refill just that
-	// slot (excluding the other visible item slots). No-op if unaffordable or the item capped out.
+	// Buy a passive item from the second board: pay, grant/stack, then refill that slot (excluding the
+	// other visible item slots). No-op if unaffordable or capped out.
 	buyItem(offer: ItemOffer | undefined) {
 		if (!this.shopOpen || !offer) return
 		if (get(credits) < offer.cost || !offer.available()) return
@@ -501,17 +469,16 @@ export class GameWorld {
 		this.startNextWave()
 	}
 
-	// The in-game spawn pedestal: a game-owned pad on the arena floor (bottom-centre), NOT the DOM
-	// Start button anymore (the portfolio is hidden during a run). Anchors the intermission shop,
-	// the return-to-spawn prompt and the launch glow/flash. Canvas-relative, so it follows resizes.
+	// The in-game spawn pedestal: a game-owned pad on the arena floor (bottom-centre), not the DOM
+	// Start button. Anchors the shop, the return-to-spawn prompt and the launch glow/flash.
 	private spawnRect() {
 		const w = 96
 		const h = 14
 		return { x: this.world.width / 2 - w / 2, top: this.world.height - h, width: w, height: h }
 	}
 
-	// Is the player standing on the spawn pad? Horizontal overlap (with a little slack) + feet near
-	// the floor, so the player can't trigger it from an arena ledge floating above the pad.
+	// Is the player standing on the spawn pad? Horizontal overlap + feet near the floor, so it can't
+	// trigger from an arena ledge floating above the pad.
 	private atSpawn() {
 		const r = this.spawnRect()
 		const px = this.player.pos.x + this.player.width / 2
@@ -521,8 +488,8 @@ export class GameWorld {
 		return nearX && nearY
 	}
 
-	// Snap the player onto the spawn pad (clean arena entry at run start). Zeroes motion so they
-	// don't inherit velocity from wherever they were standing in the portfolio.
+	// Snap the player onto the spawn pad (clean arena entry). Zeroes motion so they don't inherit
+	// velocity from the portfolio.
 	private placePlayerAtSpawn() {
 		const r = this.spawnRect()
 		this.player.pos.x = r.x + r.width / 2 - this.player.width / 2
@@ -534,8 +501,7 @@ export class GameWorld {
 		effectsStore.add(new Effect({ x: this.player.pos.x, y: this.player.pos.y + 28 }, 'smoke_12'))
 	}
 
-	// Draw the spawn pad on the arena floor so the player can always find "home" (where the shop
-	// opens between waves). A rounded slab with a cyan top edge; the glow/flash layer over it.
+	// Draw the spawn pad ("home", where the shop opens): a rounded slab with a cyan top edge.
 	private drawSpawnPad() {
 		const r = this.spawnRect()
 		const ctx = this.ctx
@@ -549,8 +515,8 @@ export class GameWorld {
 		ctx.restore()
 	}
 
-	// Pulsing "come here" glow over the spawn pedestal during the rest, tightening and
-	// brightening as the hold charges. Drawn on the canvas so it sits on the focus veil.
+	// Pulsing "come here" glow over the pedestal during the rest, tightening + brightening as the
+	// hold charges.
 	private drawSpawnGlow() {
 		const r = this.spawnRect()
 		const cx = r.x + r.width / 2
@@ -594,8 +560,7 @@ export class GameWorld {
 	}
 
 	private spawnPlayerOnPedestal() {
-		// Pop the player onto the Start button ([data-spawn]) with a smoke puff and
-		// zero its motion. Used on mount and at the start of every run.
+		// Pop the player onto the Start button ([data-spawn]) with a smoke puff, motion zeroed.
 		const spawnEl = document.querySelector('[data-spawn]')
 		if (!spawnEl) return
 		const r = spawnEl.getBoundingClientRect()
@@ -610,9 +575,8 @@ export class GameWorld {
 
 	// --- Upgrades -------------------------------------------------------------
 	private resetUpgrades() {
-		// Base stats come from the active class (Player.cfg); the level-up upgrades bump
-		// them from here. Invuln, magnet, regen and jump aren't class-specific in v1, so
-		// they keep their global baselines.
+		// Base stats come from the active class (Player.cfg). Invuln, magnet, regen and jump aren't
+		// class-specific in v1, so they keep their global baselines.
 		const c = this.player.cfg
 		this.invulnSteps = BASE_INVULN
 		this.magnetRadius = BASE_MAGNET
@@ -635,23 +599,21 @@ export class GameWorld {
 		this.shieldFlash = 0
 		this.player.speed = c.speed
 		this.player.jumpStrength = BASE_JUMP
-		// Weapon combat stats (cadence, count, damage, spread, speed, range) are per-weapon now
-		// and reset on their own instances; the level-up weapon upgrades bump these copies.
+		// Weapon combat stats are per-weapon now; reset on their own instances.
 		for (const weapon of this.player.weapons) weapon.reset()
-		// Special power is granted mid-run (null at run start), but clear its motion state and
-		// cooldown defensively in case a run is re-entered while one is somehow still held.
+		// Power is granted mid-run (null at run start); clear its motion + cooldown defensively in
+		// case a run is re-entered while one is somehow still held.
 		this.player.dashSteps = 0
 		this.player.slamming = false
 		this.player.power?.reset()
 		this.shockRings.length = 0
 		this.damageNumbers.length = 0
-		// Drop any held passive items (a fresh run starts with none; their stat effects were folded
-		// into the baseline stats reset above, so clearing the list is enough).
+		// Drop held passive items (their stat effects were folded into the baseline reset above).
 		this.items.length = 0
 	}
 
-	// Passive regeneration (Regen upgrade): heal fractional HP each step, carrying the
-	// remainder so a sub-1-HP-per-step rate still lands whole hearts. Caps at max HP.
+	// Passive regen (Regen upgrade): heal fractional HP each step, carrying the remainder so a
+	// sub-1-HP rate still lands whole hearts. Caps at max HP.
 	private applyRegen() {
 		const cap = get(maxHp)
 		if (get(playerHp) >= cap) {
@@ -666,17 +628,15 @@ export class GameWorld {
 		}
 	}
 
-	// Spend a reroll to redraw the current choices (no-op when none are left, or on the
-	// weapon-milestone card — the 2nd-weapon offer isn't rerollable).
+	// Spend a reroll to redraw the choices (no-op when none left, or on a milestone card).
 	reroll() {
 		if (!this.levelUpOpen || this.milestone || this.rerolls <= 0) return
 		this.rerolls--
 		this.choices = rollChoices(this)
 	}
 
-	// Build the next pick. Milestone cards replace the normal roll at set levels and fire once
-	// each: the 2nd weapon (WEAPON_MILESTONE_LEVEL, still solo) first, then the special power
-	// (POWER_MILESTONE_LEVEL, none held). Otherwise the normal weighted upgrade roll.
+	// Build the next pick. Milestone cards replace the normal roll and fire once each: 2nd weapon
+	// (WEAPON_MILESTONE_LEVEL) first, then power (POWER_MILESTONE_LEVEL). Else the weighted roll.
 	private openPick() {
 		if (
 			!this.weaponMilestoneDone &&
@@ -702,8 +662,8 @@ export class GameWorld {
 		this.choices = rollChoices(this)
 	}
 
-	// Queue the level-ups earned this step; open the modal on the first one.
-	// Called by CombatResolver when a banked gem crosses a level threshold, hence non-private.
+	// Queue the level-ups earned this step; open the modal on the first. Called by CombatResolver
+	// when a banked gem crosses a level threshold, hence non-private.
 	queueLevelUps(n: number) {
 		this.pendingLevelUps += n
 		if (!this.levelUpOpen) {
@@ -718,8 +678,8 @@ export class GameWorld {
 		u.apply(this)
 		if (this.milestone === 'weapon') this.weaponMilestoneDone = true // 2nd weapon claimed
 		else if (this.milestone === 'power') this.powerMilestoneDone = true // power claimed
-		// A level-up fully heals (Brotato-style reward for surviving the climb). Applied
-		// AFTER the pick so a +max-HP choice (Vitality) tops up to the new, higher cap.
+		// A level-up fully heals. Applied AFTER the pick so a +max-HP choice (Vitality) tops up to the
+		// new, higher cap.
 		playerHp.set(get(maxHp))
 		this.pendingLevelUps--
 		if (this.pendingLevelUps > 0) this.openPick()
@@ -730,8 +690,8 @@ export class GameWorld {
 	}
 
 	// --- Passive items (misc bonuses) ----------------------------------------
-	// Grant an item, or stack it if already held and below its cap, running its onAcquire each time
-	// so per-stack stat bumps apply. Bought from the shop's item board (buyItem).
+	// Grant an item, or stack it if held and below cap, running onAcquire each time so per-stack
+	// bumps apply.
 	acquireItem(type: ItemType) {
 		const max = type.maxStacks ?? 1
 		const existing = this.items.find((it) => it.type.id === type.id)
@@ -746,15 +706,14 @@ export class GameWorld {
 		}
 	}
 
-	// How many stacks of an item the player holds (0 if none) — the shop prices/caps offers with it.
+	// Stacks of an item the player holds (0 if none) — the shop prices/caps offers with it.
 	itemStacks(id: string) {
 		return this.items.find((it) => it.type.id === id)?.stacks ?? 0
 	}
 
-	// Hook fan-out: each held item may subscribe to these combat/lifecycle seams. Kept as thin loops
-	// so a new item is a data entry in items.ts, never an engine edit here. onKill can re-enter (an
-	// item's blast kills more), which is fine — shockwave/resolveHits skip already-dead enemies.
-	// Fanned out by CombatResolver at the kill / hit / damage-taken seams, so left non-private.
+	// Hook fan-out: each held item may subscribe to these combat/lifecycle seams. onKill can re-enter
+	// (an item's blast kills more), which is fine — shockwave/resolveHits skip already-dead enemies.
+	// Fanned out by CombatResolver at the kill/hit/damage-taken seams, so left non-private.
 	itemsOnKill(enemy: Enemy) {
 		for (const it of this.items) it.type.onKill?.(this, enemy, it)
 	}
@@ -775,29 +734,38 @@ export class GameWorld {
 	}
 
 	// --- Combat resolution ----------------------------------------------------
-	// Drive the player's weapons each step: every weapon aims from its own muzzle at the
-	// nearest enemy IT can reach (so a left and a right weapon cover different threats),
-	// then fires on its own cadence. When not playing (intermission) weapons still aim
-	// straight ahead but hold fire. Only 'ranged' (the Punk) is wired; 'melee'/'deploy'
-	// re-slot here when their classes come back (see characters.ts / ROADMAP.md).
+	// Drive the player's weapons each step: each aims from its own muzzle at the nearest enemy IT can
+	// reach (so left/right weapons cover different threats), then fires on its own cadence. Not playing
+	// → aim ahead but hold fire. Only 'ranged' (the Punk) is wired; 'melee'/'deploy' re-slot later.
 	private playerCombat(playing: boolean) {
 		if (this.player.cfg.attackStyle !== 'ranged') return
 		for (const weapon of this.player.weapons) {
 			const muzzle = weapon.muzzle(this.player)
-			// A zero-size aim source centres nearestEnemy exactly on the muzzle point. The global
-			// Range stat extends every weapon's own engagement range.
-			const range = weapon.attackRange + this.rangeBonus
+			// Continuous weapons (flame/beam) keep reach == drawn cone, so they ignore the global Range
+			// stat (short-range by identity; per-weapon shop Optique still extends them). Bolt/lob
+			// weapons get +Range on top of their engagement range.
+			const continuous = weapon.type.fireMode === 'flame' || weapon.type.fireMode === 'beam'
+			const range = continuous ? weapon.attackRange : weapon.attackRange + this.rangeBonus
+			// A zero-size aim source centres nearestEnemy exactly on the muzzle point.
 			const target = playing
 				? nearestEnemy({ pos: muzzle, width: 0, height: 0 }, this.platforms, range)
 				: null
 			weapon.aimAt(target, muzzle, this.player.direction)
+			// `firing` drives the continuous-weapon render (flame cone / laser beam); set every step
+			// there's a target, cleared otherwise so the effect vanishes on disengage or pause.
+			weapon.firing = continuous && playing && !!target
 			if (!playing) continue
 			if (weapon.cooldown > 0) {
 				weapon.cooldown--
 				continue
 			}
 			if (target) {
-				weapon.shoot(muzzle)
+				// Delivery by archetype: 'lob' arcs a grenade, 'flame' rakes a cone, 'beam' a piercing
+				// laser (both resolved in CombatResolver), the rest fire the straight-bolt fan.
+				if (weapon.type.fireMode === 'lob') weapon.lob(muzzle, target)
+				else if (weapon.type.fireMode === 'flame') this.combat.fireFlame(weapon, muzzle)
+				else if (weapon.type.fireMode === 'beam') this.combat.fireBeam(weapon, muzzle)
+				else weapon.shoot(muzzle)
 				// Per-weapon cadence, sped up by the global Attack Speed stat (fireRateMul).
 				weapon.cooldown = Math.max(MIN_FIRE_STEPS, Math.round(weapon.fireSteps * this.fireRateMul))
 			}
@@ -805,9 +773,8 @@ export class GameWorld {
 	}
 
 	// --- Special power (touche S) ---------------------------------------------
-	// Tick the equipped power's cooldown each step and fire it on an 'S' press (a rising-edge
-	// flag the controller sets). No power → just clear the flag so a later grant doesn't fire
-	// a stale press. Called every step while playing.
+	// Tick the power's cooldown each step and fire on an 'S' press (rising-edge flag). No power →
+	// clear the flag so a later grant doesn't fire a stale press.
 	private updatePower() {
 		const power = this.player.power
 		if (!power) {
@@ -821,8 +788,8 @@ export class GameWorld {
 		}
 	}
 
-	// Dispatch the power by kind (the seam mirrors attackStyle / enemy behaviour). Each case
-	// reads the power's mutable stats, may grant i-frames, and puts it on cooldown.
+	// Dispatch the power by kind. Each case reads the power's mutable stats, may grant i-frames, and
+	// puts it on cooldown.
 	private activatePower(power: Power) {
 		const p = this.player
 		switch (power.type.kind) {
@@ -835,11 +802,11 @@ export class GameWorld {
 			}
 			case 'slam': {
 				if (p.isFalling) {
-					// Airborne: plunge; the shockwave fires on landing (resolveSlamLanding).
+					// Airborne: plunge; shockwave fires on landing (resolveSlamLanding).
 					p.startSlam(power.type.speed)
 					this.invuln = Math.max(this.invuln, power.type.invulnSteps)
 				} else {
-					// Grounded: stomp right here, no plunge.
+					// Grounded: stomp here, no plunge.
 					this.shockwave(
 						p.pos.x + p.width / 2, p.pos.y + p.height,
 						power.radius, power.damage, power.knockback, power.type.color
@@ -859,8 +826,8 @@ export class GameWorld {
 		power.trigger()
 	}
 
-	// The slam plunge landed: detonate the ground shockwave once. Watched each step after the
-	// player moves, so isFalling is fresh (the vertical collision cleared it on touchdown).
+	// Slam plunge landed: detonate the ground shockwave once. Watched after the player moves, so
+	// isFalling is fresh (vertical collision cleared it on touchdown).
 	private resolveSlamLanding() {
 		const p = this.player
 		if (!p.slamming || p.isFalling) return
@@ -873,17 +840,16 @@ export class GameWorld {
 		)
 	}
 
-	// Thin forwarder to the combat resolver's blast, kept on GameWorld so the powers above and the
-	// passive items (items.ts, which receive a GameWorld) trigger blasts through the same path.
+	// Thin forwarder to the resolver's blast, so powers above and passive items (items.ts) trigger
+	// blasts through the same path.
 	shockwave(cx: number, cy: number, radius: number, damage: number, knockback: number, color: string) {
 		this.combat.shockwave(cx, cy, radius, damage, knockback, color)
 	}
 
 	// --- Camera & parallax ----------------------------------------------------
-	// Softly recenter on the player at all times (no dead-zone), leading the view in the travel
-	// direction so you see what's coming instead of running blind into the edge. The lead eases in/out
-	// (and back to 0 when idle → exact recenter); a gentle downward bias keeps the ground in view.
-	// Easing keeps it smooth so it doesn't yank/nauseate. `snap` jumps straight to target (run entry).
+	// Softly recenter on the player (no dead-zone), leading the travel direction so you see what's
+	// coming. Lead eases in/out (→ 0 when idle); a downward bias keeps the ground in view.
+	// `snap` jumps straight to target (run entry).
 	private updateCamera(snap = false) {
 		const viewW = this.viewW
 		const viewH = this.viewH
@@ -905,11 +871,10 @@ export class GameWorld {
 		}
 	}
 
-	// Parallax skyline behind the arena (replaces the flat focus veil). Drawn in SCREEN space with a
-	// per-layer fraction of the camera offset — far layers barely move, near layers more — over an
-	// opaque gradient base so the CV never bleeds through once faded in. `alpha` is the idle↔arena
-	// crossfade (dimAlpha). Each layer is scaled to the viewport height and tiled across its width;
-	// its bottom stays at/below the viewport bottom, rising toward the floor as the camera descends.
+	// Parallax skyline behind the arena. Drawn in SCREEN space with a per-layer fraction of the camera
+	// offset (far layers barely move) over an opaque gradient base so the CV never bleeds through.
+	// `alpha` is the idle↔arena crossfade (dimAlpha). Each layer is scaled to viewport height, tiled
+	// across its width, its bottom staying at/below the viewport bottom.
 	private drawParallax(alpha: number) {
 		const ctx = this.ctx
 		const viewW = this.viewW
@@ -949,14 +914,13 @@ export class GameWorld {
 		const status = get(gameStatus)
 		const playing = status === 'playing'
 		const entering = status === 'entering'
-		// In the arena (world coords + camera + parallax) for the reveal, the run and the game-over
-		// card; the portfolio (screen coords, no camera) otherwise.
+		// In the arena (world coords + camera + parallax) for the reveal, run and game-over card;
+		// the portfolio (screen coords, no camera) otherwise.
 		const inArena = playing || entering || status === 'over'
 
-		// Rising edge of the reveal (idle/over → entering): build the arena the character will fall
-		// INTO, clear any stale field, and let gravity carry it down from wherever it stood (the DOM
-		// platforms drop out of collectPlatforms as soon as we leave 'idle', so it falls through the
-		// page into the arena). NO teleport. The weapon picker opens below once it has landed.
+		// Rising edge of the reveal (idle/over → entering): build the arena the character falls INTO,
+		// clear stale field, and let gravity carry it down (DOM platforms drop out of collectPlatforms
+		// on leaving 'idle', so it falls through the page). NO teleport. Picker opens once landed.
 		if (entering && !this.wasEntering) {
 			this.clearAllPools()
 			this.shopOpen = false
@@ -971,22 +935,21 @@ export class GameWorld {
 			this.enterTimer = 0
 			this.enterPickShown = false
 			this.enteredFromReveal = true // the coming run keeps the fallen pose (no spawn-pad snap)
-			this.updateCamera(true) // centre the view on the character before it starts falling
+			this.updateCamera(true) // centre the view before it starts falling
 		}
 		this.wasEntering = entering
 
 		// Falling edge of the arena (→ idle, i.e. a quit): the character's position is in world space,
-		// so pop it back onto the portfolio pedestal (screen space) so it's visible on the returning CV.
+		// so pop it back onto the portfolio pedestal (screen space) for the returning CV.
 		if (this.wasInArena && !inArena) this.spawnPlayerOnPedestal()
 		this.wasInArena = inArena
 
-		// On the rising edge of a run, reset the run state. When the run was reached through the reveal
-		// the arena + the player's position were already established (it fell in), so we DON'T rebuild
-		// the layout or snap it onto the pad — it keeps wherever it landed.
+		// Rising edge of a run: reset run state. Reached via the reveal → arena + position already
+		// established (it fell in), so DON'T rebuild the layout or snap to the pad.
 		if (playing && !this.wasPlaying) {
 			this.clearAllPools()
-			// (Re)configure the Player from the character registry, then reset its base stats.
-			// One class ships today (Punk); the registry stays the seam for re-adding classes.
+			// (Re)configure the Player from the character registry, then reset base stats. One class
+			// ships today (Punk); the registry stays the seam for re-adding classes.
 			this.player.applyCharacter(CHARACTERS.punk)
 			this.player.equip([get(startingWeapon)]) // the weapon chosen in the launch picker
 			this.resetUpgrades()
@@ -1008,8 +971,8 @@ export class GameWorld {
 			this.intermission = false
 			this.spawnDwell = 0
 			this.spawnFlash = 0
-			// The reveal already built the wave-1 arena and let the character fall in, so keep both.
-			// The fallback (a run started without a reveal — shouldn't happen) rebuilds + snaps in.
+			// Reveal already built the wave-1 arena and let the character fall in, so keep both. The
+			// fallback (a run without a reveal — shouldn't happen) rebuilds + snaps in.
 			if (!this.enteredFromReveal || this.proceduralPlatforms.length === 0) {
 				this.pendingPlatforms = []
 				this.proceduralPlatforms = this.buildLayout() // fresh arena for wave 1
@@ -1017,7 +980,7 @@ export class GameWorld {
 				this.placePlayerAtSpawn()
 			}
 			this.enteredFromReveal = false
-			// Open on the wave-1 theme banner so the first encounter is announced too.
+			// Open on the wave-1 theme banner.
 			this.waveBanner = WAVE_BANNER_MS
 			this.waveBannerLabel = waveDef(get(wave)).label
 		}
@@ -1029,25 +992,21 @@ export class GameWorld {
 			this.pendingLevelUps = 0
 			this.milestone = null
 		}
-		// Sim freeze (field preserved, not cleared): a level-up pick, the pause menu, or the
-		// intermission shop.
+		// Sim freeze (field preserved): a level-up pick, the pause menu, or the shop.
 		const paused = this.levelUpOpen || this.shopOpen || get(pausedStore)
 
-		// Advance the wave on a timer, then spawn enemies at the current wave's rate/
-		// cap. Frozen while a pick is open; the field is cleared once truly stopped.
+		// Advance the wave on a timer, then spawn enemies at the current rate/cap. Frozen while a pick
+		// is open; the field is cleared once truly stopped.
 		if (playing && !paused) {
 			if (this.intermission) {
-				// Rest phase: no spawns, no timer. The next wave starts once the player has
-				// walked back to the pedestal and held it for SPAWN_DWELL_MS (crossfading the
-				// arena layout meanwhile).
+				// Rest phase: no spawns/timer. The next wave starts once the player has held the
+				// pedestal for SPAWN_DWELL_MS (crossfading the arena layout meanwhile).
 				this.updateIntermission()
 			} else {
-				// Advance open rifts every frame (they emit their hordes on their own timers).
+				// Advance open rifts every frame (they emit hordes on their own timers).
 				this.director.updatePortals(frameTime)
 				this.waveTimer += frameTime
 				if (this.waveTimer >= waveDuration(get(wave))) {
-					// Combat over: clear the field, spawn a new arena, and wait for the
-					// player to return to spawn (startNextWave advances the wave counter).
 					this.enterIntermission()
 				} else {
 					this.spawnTimer += frameTime
@@ -1058,9 +1017,8 @@ export class GameWorld {
 				}
 			}
 		} else if (entering) {
-			// Reveal in progress: no spawns/combat yet — just let the character fall in (its update
-			// runs in the fixed-step block below). Open the weapon picker once it has landed, or after
-			// a hard cap so a long fall never leaves the reveal hanging.
+			// Reveal in progress: no spawns/combat — the character falls in (update runs in the
+			// fixed-step block below). Open the picker once landed, or after a hard cap.
 			this.enterTimer += frameTime
 			const landed = !this.player.isFalling
 			if (
@@ -1076,8 +1034,7 @@ export class GameWorld {
 			this.shopOpen = false
 			this.invuln = 0
 			this.waveBanner = 0
-			// Drop the arena ledges so the idle/home screen shows none (they're re-rolled
-			// on the next run start).
+			// Drop the arena ledges so the idle/home screen shows none (re-rolled on next run).
 			if (this.proceduralPlatforms.length || this.pendingPlatforms.length) {
 				this.proceduralPlatforms = []
 				this.pendingPlatforms = []
@@ -1091,24 +1048,21 @@ export class GameWorld {
 			keys.power = false
 		}
 
-		// Entities are confined to the WORLD while in the arena; to the viewport in portfolio mode
-		// (idle), where the character roams/climbs the CV within the visible screen.
+		// Entities are confined to the WORLD in the arena; to the viewport in portfolio mode (idle).
 		const bounds = inArena ? this.world : this.canvas
 
-		// Advance physics in fixed steps, consuming the elapsed real time. A level-up
-		// pause skips the updates entirely, freezing every entity in place.
+		// Advance physics in fixed steps, consuming elapsed real time. A pause skips the updates,
+		// freezing every entity in place.
 		this.accumulator += frameTime
 		while (this.accumulator >= FIXED_STEP) {
 			if (!paused) {
-				// Snapshot the self-culling pools (a projectile/gem/bomb/pack removes itself
-				// from its live pool inside update()); iterate a copy so none is skipped.
-				// Enemies don't self-remove in update() (death happens in resolveHits), so
-				// they iterate live and pass the live list for neighbour separation.
+				// Snapshot the self-culling pools (projectiles/gems/bombs/packs remove themselves in
+				// update()) so none is skipped. Enemies don't self-remove (death happens in
+				// resolveHits), so they iterate live + pass the live list for neighbour separation.
 				projectilesStore.list
 					.slice()
 					.forEach((projectile) => projectile.update(STEP_DELTA, this.platforms))
-				// During the between-wave rest, boost the pickup radius so leftover gems sweep
-				// in on the walk back to spawn; it reverts the moment the next wave starts.
+				// During the rest, boost the pickup radius so leftover gems sweep in on the walk back.
 				const magnet = this.intermission
 					? this.magnetRadius * INTERMISSION_MAGNET_MUL
 					: this.magnetRadius
@@ -1124,6 +1078,10 @@ export class GameWorld {
 						.slice()
 						.forEach((bomb) => bomb.update(bounds, this.platforms, STEP_DELTA))
 				if (playing)
+					grenadesStore.list
+						.slice()
+						.forEach((grenade) => grenade.update(bounds, this.platforms, STEP_DELTA))
+				if (playing)
 					healthPacksStore.list
 						.slice()
 						.forEach((pack) => pack.update(bounds, this.platforms, STEP_DELTA))
@@ -1132,8 +1090,8 @@ export class GameWorld {
 						.slice()
 						.forEach((crate) => crate.update(bounds, this.platforms, STEP_DELTA))
 				this.player.update(bounds, keys, this.platforms, STEP_DELTA)
-				// Special power (S): tick its cooldown, fire on press, and detonate a slam that
-				// just landed. After player.update so isFalling reflects this step's landing.
+				// Special power (S): tick cooldown, fire on press, detonate a just-landed slam. After
+				// player.update so isFalling reflects this step's landing.
 				if (playing) {
 					this.updatePower()
 					this.resolveSlamLanding()
@@ -1152,33 +1110,33 @@ export class GameWorld {
 					this.combat.resolvePlayerDamage()
 					this.combat.resolveEnemyShots()
 					this.combat.resolveBombs()
+					this.combat.resolveGrenades()
 				}
 			}
 			this.accumulator -= FIXED_STEP
 		}
-		// Loosely track the character after the step so the view follows this frame's movement.
+		// Track the character after the step so the view follows this frame's movement.
 		if (inArena) this.updateCamera()
 		// Freeze interpolation + sprite animation while paused so entities hold still.
 		const alpha = paused ? 1 : this.accumulator / FIXED_STEP
 		const animDelta = paused ? 0 : frameTime / 12
 
-		// Render once per frame, interpolating entities between their last two steps. Reset any prior
-		// transform, clear the whole device canvas, then — IN THE ARENA ONLY — apply the fixed-view
-		// scale so the world/parallax/HUD render in view units (zoom-invariant). In portfolio mode we
-		// stay at 1:1 device px so the character lines up with the real CV elements it climbs.
+		// Render once per frame, interpolating entities between their last two steps. Reset transform,
+		// clear the device canvas, then — IN THE ARENA ONLY — apply the fixed-view scale so world/
+		// parallax/HUD render in view units (zoom-invariant). Portfolio mode stays 1:1 device px so the
+		// character lines up with the real CV elements it climbs.
 		this.ctx.setTransform(1, 0, 0, 1, 0, 0)
 		this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
 		if (inArena) this.ctx.scale(this.viewScale, this.viewScale)
-		// Arena backdrop: a run HIDES the portfolio (see +layout), so paint the parallax skyline behind
-		// the sprites, eased in/out (dimAlpha) so idle↔play crossfades. At idle it stays transparent —
-		// the CV shows through and the player climbs the page (portfolio mode). Held up through the
-		// game-over card too (portfolio stays hidden until idle), so death sits in the arena.
+		// Arena backdrop: a run hides the portfolio, so paint the parallax skyline behind the sprites,
+		// eased in/out (dimAlpha) so idle↔play crossfades. Held through the game-over card too, so
+		// death sits in the arena.
 		this.dimAlpha += ((get(gameStatus) !== 'idle' ? 1 : 0) - this.dimAlpha) * 0.12
-		// Only under the view scale (inArena); on a quit the CV returns cleanly without a mis-scaled draw.
+		// Only under the view scale (inArena); on a quit the CV returns without a mis-scaled draw.
 		if (inArena && this.dimAlpha > 0.01) this.drawParallax(this.dimAlpha)
 
-		// World space: shift everything by the camera while in the arena. In portfolio mode the
-		// transform is identity, so entities render at their screen coords and climb the live CV.
+		// World space: shift everything by the camera in the arena. Portfolio mode is identity, so
+		// entities render at screen coords and climb the live CV.
 		this.ctx.save()
 		if (inArena) this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY))
 		// World floor: a faint ground band across the arena's bottom edge with a lit cyan lip.
@@ -1190,28 +1148,28 @@ export class GameWorld {
 			this.ctx.fillRect(0, fy - 2, this.world.width, 2)
 		}
 		for (const platform of this.platforms) platform.draw(this.ctx)
-		// The in-game spawn pad (home base for the intermission shop), on the floor under the sprites.
-		// Shown during the reveal too, so the arena reads as "home" as the character drops in.
+		// Spawn pad (home base for the shop), under the sprites. Shown during the reveal too.
 		if (playing || entering) this.drawSpawnPad()
-		// The next wave's ledges fade in over the hold (render-only until promoted).
+		// Next wave's ledges fade in over the hold (render-only until promoted).
 		if (playing && this.intermission)
 			for (const pf of this.pendingPlatforms) pf.draw(this.ctx)
-		// Spawn pedestal call-to-action glow during the rest, and the launch burst after.
+		// Pedestal call-to-action glow during the rest, and the launch burst after.
 		if (playing && this.intermission) this.drawSpawnGlow()
 		if (playing && this.spawnFlash > 0) this.drawSpawnFlash()
-		// Enemy rifts, behind the gems/enemies so hordes read as emerging in front of them.
+		// Enemy rifts, behind the gems/enemies so hordes read as emerging in front.
 		if (playing) portalsStore.list.forEach((portal) => portal.draw(this.ctx))
 		xpGemsStore.list.forEach((gem) => gem.draw(this.ctx, alpha))
 		healthPacksStore.list.forEach((pack) => pack.draw(this.ctx, alpha))
 		creditCratesStore.list.forEach((crate) => crate.draw(this.ctx, alpha))
 		enemiesStore.list.forEach((enemy) => enemy.draw(this.ctx, animDelta, alpha))
 		bombsStore.list.forEach((bomb) => bomb.draw(this.ctx, alpha))
+		grenadesStore.list.forEach((grenade) => grenade.draw(this.ctx, alpha))
 		projectilesStore.list.forEach((projectile) => projectile.draw(this.ctx, alpha))
-		// Blink the player while invulnerable after a hit (but always show it paused).
-		if (paused || this.invuln <= 0 || Math.floor(this.invuln / 6) % 2 === 0) {
-			this.player.draw(this.ctx, animDelta, alpha)
-		}
-		// Shield bubble over the player (only in an active run, so idle shows none).
+		// Blink the player while invulnerable after a hit (always show it paused). Only body + gun
+		// blink — continuous-weapon FX are world effects and always render (no flamethrower strobe).
+		const blinkHidden = !paused && this.invuln > 0 && Math.floor(this.invuln / 6) % 2 !== 0
+		this.player.draw(this.ctx, animDelta, alpha, blinkHidden)
+		// Shield bubble over the player (active run only).
 		if (playing) this.combat.drawShield(alpha)
 		// Passive items with a visual (drones) draw over the player.
 		if (playing) this.itemsDraw(alpha)
@@ -1219,12 +1177,12 @@ export class GameWorld {
 		effectsStore.list.slice().forEach((effect: Effect) => effect.draw(this.ctx))
 		// Nova / slam blast rings, over everything (age out even if the run just ended).
 		this.combat.drawShockRings(frameTime)
-		// Floating damage numbers, topmost so they read over sprites and rings alike.
+		// Floating damage numbers, topmost so they read over sprites and rings.
 		this.combat.drawDamageNumbers(frameTime)
-		this.ctx.restore() // end world space — the HUD/overlays below are screen-fixed
+		this.ctx.restore() // end world space — HUD/overlays below are screen-fixed
 
 		if (playing) {
-			// The HUD is drawn under the view scale (still in effect here), so it uses view units.
+			// HUD is drawn under the view scale (still in effect), so it uses view units.
 			const view = { width: this.viewW, height: this.viewH }
 			drawHud(this.ctx, view)
 			// Special-power badge (glyph + recharge wipe), or nothing until one is earned.
@@ -1238,8 +1196,7 @@ export class GameWorld {
 			)
 			if (this.waveBanner > 0)
 				drawWaveBanner(this.ctx, view, this.waveBanner, this.waveBannerLabel)
-			// During the rest phase, prompt the player to walk back to spawn (pulsing), and
-			// show the hold-charge bar once they're on the pedestal.
+			// During the rest, prompt the player back to spawn (pulsing) + hold-charge bar on the pedestal.
 			if (this.intermission && !this.shopOpen)
 				drawIntermissionPrompt(
 					this.ctx,
